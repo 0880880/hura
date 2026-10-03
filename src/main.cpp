@@ -73,6 +73,10 @@ struct Production {
 struct GrammarDefinition {
   std::string from;
   std::vector<Production> g;
+
+  constexpr size_t real_size() const {
+    return (g.size() == 1 && g[0].is_epsilon) ? 0 : g.size();
+  }
 };
 
 struct LRItem {
@@ -220,11 +224,12 @@ private:
   std::deque<StateIRData> states_data;
   std::map<std::vector<Production>, std::set<Production>> first_table;
 
+  std::map<std::string, size_t> nonterminal_id_map;
   std::map<std::string, uint8_t> token_id_map;
   std::map<uint8_t, std::string> id_token_map;
 
   std::vector<std::vector<std::pair<char, uint32_t>>> ACTION_table;
-  std::vector<std::vector<size_t>> GOTO_table;
+  std::vector<std::vector<int>> GOTO_table;
 
   std::unique_ptr<llvm::Module> mod;
   std::unique_ptr<llvm::LLVMContext> context;
@@ -645,9 +650,23 @@ private:
     }
   }
 
+  size_t find_rule(const LRItem &item) {
+    for (size_t i = 0; i < grammarDefinitions.size(); ++i) {
+      const GrammarDefinition &def = grammarDefinitions[i];
+      if (def.from == item.from && def.g == item.prods) {
+        return i;
+      }
+    }
+    throw std::runtime_error("Unknown rule");
+  }
+
 public:
   void add(const GrammarDefinition def) {
     grammarDefinitions.push_back(GrammarDefinition(def));
+    rules.push_back(Rule{def.from, def.real_size()});
+    if (!nonterminal_id_map.contains(def.from)) {
+      nonterminal_id_map[def.from] = nonterminal_id_map.size();
+    }
   }
 
   void set_start(const std::string start) { this->start = start; }
@@ -656,24 +675,32 @@ public:
     GrammarDefinition def;
     def.from = start + "_p";
     def.g.emplace_back(false, false, start, 0);
-    grammarDefinitions.push_back(def);
+    add(def);
     start = start + "_p";
   }
 
   void build() {
     {
-      size_t last_size = first_table.size() + 1;
-      while (last_size != first_table.size()) {
-        last_size = first_table.size();
+      bool changed = true;
+      while (changed) {
+        changed = false;
         for (const GrammarDefinition &def : grammarDefinitions) {
           bool natural_end = true;
           for (const Production &p : def.g) {
             std::set<Production> &pf = first_table[std::vector<Production>{p}];
             if (p.is_terminal) {
+              size_t last_size = pf.size();
               pf.insert(p);
+              if (last_size != pf.size()) {
+                changed = true;
+              }
             }
             if (p.is_epsilon) {
+              size_t last_size = pf.size();
               pf.insert(Production::epsilon());
+              if (last_size != pf.size()) {
+                changed = true;
+              }
             }
             bool has_epsilon = false;
             for (const Production &op : pf) {
@@ -681,7 +708,13 @@ public:
                 has_epsilon = true;
                 continue;
               }
-              first_table[{Production{false, false, def.from, 0}}].insert(op);
+              std::set<Production> &s =
+                  first_table[{Production{false, false, def.from, 0}}];
+              size_t last_size = s.size();
+              s.insert(op);
+              if (last_size != s.size()) {
+                changed = true;
+              }
             }
             if (!has_epsilon) {
               natural_end = false;
@@ -689,8 +722,13 @@ public:
             }
           }
           if (natural_end) {
-            first_table[{Production{false, false, def.from, 0}}].insert(
-                Production::epsilon());
+            std::set<Production> &s =
+                first_table[{Production{false, false, def.from, 0}}];
+            size_t last_size = s.size();
+            s.insert(Production::epsilon());
+            if (last_size != s.size()) {
+              changed = true;
+            }
           }
         }
       }
@@ -880,23 +918,41 @@ public:
       }
       for (const LRItem &item : states[i].kernel) {
         if (item.eof()) {
+          if (item.from == start) {
+            ACTION_table[i][TOKEN_KIND_EOF] = std::make_pair('a', 0);
+            continue;
+          }
           for (const Production &p : item.lookaheads) {
+            if (ACTION_table[i][p.token_kind] != std::pair<char, uint32_t>{} &&
+                ACTION_table[i][p.token_kind] !=
+                    std::make_pair('r', find_rule(item))) {
+              throw std::runtime_error("ACTION table conflic at (" +
+                                       std::to_string(i) + ", " +
+                                       std::to_string(p.token_kind) + ")");
+            }
             ACTION_table[i][p.token_kind] =
-                std::make_pair('r', item.real_size());
+                std::make_pair('r', find_rule(item));
           }
         }
       }
       for (const LRItem &item : states[i].closures) {
         if (item.eof()) {
           for (const Production &p : item.lookaheads) {
+            if (ACTION_table[i][p.token_kind] != std::pair<char, uint32_t>{} &&
+                ACTION_table[i][p.token_kind] !=
+                    std::make_pair('r', find_rule(item))) {
+              throw std::runtime_error("ACTION table conflic at (" +
+                                       std::to_string(i) + ", " +
+                                       std::to_string(p.token_kind) + ")");
+            }
             ACTION_table[i][p.token_kind] =
-                std::make_pair('r', item.real_size());
+                std::make_pair('r', find_rule(item));
           }
         }
       }
     }
 
-    std::cout << "| States |";
+    std::cout << "| State |";
     for (auto const &[k, v] : token_id_map) {
       std::cout << " " << k << " |";
     }
@@ -909,7 +965,6 @@ public:
     for (size_t i = 0; i < states.size(); ++i) {
       std::cout << "| " << i << " |";
       for (auto const &[k, v] : token_id_map) {
-        Production p{true, false, "", v};
         if (ACTION_table[i][v] != std::pair<char, uint32_t>{}) {
           std::pair<char, uint32_t> act = ACTION_table[i][v];
           std::cout << " " << act.first << act.second << " |";
@@ -919,6 +974,73 @@ public:
       }
       std::cout << std::endl;
     }
+
+    GOTO_table.resize(states.size());
+
+    for (size_t i = 0; i < states.size(); ++i) {
+      GOTO_table[i].resize(nonterminal_id_map.size());
+      for (size_t j = 0; j < nonterminal_id_map.size(); ++j) {
+        GOTO_table[i][j] = -1;
+      }
+      for (auto const &[k, v] : states[i].transitions) {
+        if (!k.is_terminal) {
+          GOTO_table[i][nonterminal_id_map[k.value]] = v;
+        }
+      }
+    }
+
+    std::cout << "| State |";
+    for (auto const &[k, v] : nonterminal_id_map) {
+      std::cout << " " << k << " |";
+    }
+    std::cout << std::endl << "|---|";
+    for (size_t ignored = 0; ignored < nonterminal_id_map.size(); ++ignored) {
+      std::cout << "---|";
+    }
+    std::cout << std::endl;
+
+    for (size_t i = 0; i < states.size(); ++i) {
+      std::cout << "| " << i << " |";
+      for (auto const &[k, v] : nonterminal_id_map) {
+        if (GOTO_table[i][v] != -1) {
+          int gt = GOTO_table[i][v];
+          std::cout << " " << gt << " |";
+        } else {
+          std::cout << "  |";
+        }
+      }
+      std::cout << std::endl;
+    }
+
+    int i = 0;
+    std::vector<int> stack = {0};
+
+    while (true) {
+      int state = stack.back();
+      std::cout << "i=" << i << ":" << id_token_map[tokens[i]]
+                << "   state=" << state;
+      auto [cmd, arg] = ACTION_table[state][tokens[i]];
+      std::cout << " cmd=" << cmd << std::endl;
+      switch (cmd) {
+      case 's':
+        stack.push_back(arg);
+        ++i;
+        continue;
+      case 'r':
+        for (size_t i = 0; i < rules[arg].pop_count; ++i) {
+          stack.pop_back();
+        }
+        stack.push_back(
+            GOTO_table[stack.back()][nonterminal_id_map[rules[arg].from]]);
+        std::cout << "Reduced " << rules[arg].from << std::endl;
+        continue;
+      case 'a':
+        std::cout << "Accepted" << std::endl;
+        return;
+      }
+    }
+
+    // Simulate
   }
 };
 
@@ -981,7 +1103,7 @@ int main() {
 
   pb.write_mermaid();
 
-  pb.simulate({3, 3, 3, 2, 2, 2, TOKEN_KIND_EOF});
+  pb.simulate({3, 2, 3, 3, 2, 2, TOKEN_KIND_EOF});
 
   return 0;
 }
