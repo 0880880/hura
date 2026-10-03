@@ -228,7 +228,6 @@ private:
   std::map<std::string, uint8_t> token_id_map;
   std::map<uint8_t, std::string> id_token_map;
 
-  std::vector<std::vector<std::pair<char, uint32_t>>> ACTION_table;
   std::vector<std::vector<int>> GOTO_table;
 
   std::unique_ptr<llvm::Module> mod;
@@ -905,9 +904,74 @@ public:
 
   std::string map_id(uint8_t token_id) { return id_token_map[token_id]; }
 
+  void validate() {
+    std::vector<std::vector<std::pair<char, uint32_t>>> ACTION_table(
+        states.size());
+
+    for (size_t i = 0; i < states.size(); ++i) {
+      ACTION_table[i].resize(token_id_map.size() + 1);
+      for (auto const &[k, v] : states[i].transitions) {
+        if (k.is_terminal) {
+          ACTION_table[i][k.token_kind] = std::make_pair('s', v);
+        }
+      }
+      for (const LRItem &item : states[i].kernel) {
+        if (item.eof()) {
+          if (item.from == start) {
+            ACTION_table[i][TOKEN_KIND_EOF] = std::make_pair('a', 0);
+            continue;
+          }
+          for (const Production &p : item.lookaheads) {
+            if (ACTION_table[i][p.token_kind] != std::pair<char, uint32_t>{} &&
+                ACTION_table[i][p.token_kind] !=
+                    std::make_pair('r', find_rule(item))) {
+              throw std::runtime_error("ACTION table conflic at (" +
+                                       std::to_string(i) + ", " +
+                                       std::to_string(p.token_kind) + ")");
+            }
+            ACTION_table[i][p.token_kind] =
+                std::make_pair('r', find_rule(item));
+          }
+        }
+      }
+      for (const LRItem &item : states[i].closures) {
+        if (item.eof()) {
+          for (const Production &p : item.lookaheads) {
+            if (ACTION_table[i][p.token_kind] != std::pair<char, uint32_t>{} &&
+                ACTION_table[i][p.token_kind] !=
+                    std::make_pair('r', find_rule(item))) {
+              throw std::runtime_error("ACTION table conflic at (" +
+                                       std::to_string(i) + ", " +
+                                       std::to_string(p.token_kind) + ")");
+            }
+            ACTION_table[i][p.token_kind] =
+                std::make_pair('r', find_rule(item));
+          }
+        }
+      }
+    }
+  }
+
+  void create_GOTO() {
+    GOTO_table.resize(states.size());
+
+    for (size_t i = 0; i < states.size(); ++i) {
+      GOTO_table[i].resize(nonterminal_id_map.size());
+      for (size_t j = 0; j < nonterminal_id_map.size(); ++j) {
+        GOTO_table[i][j] = -1;
+      }
+      for (auto const &[k, v] : states[i].transitions) {
+        if (!k.is_terminal) {
+          GOTO_table[i][nonterminal_id_map[k.value]] = v;
+        }
+      }
+    }
+  }
+
   void simulate(std::vector<uint8_t> tokens) {
 
-    ACTION_table.resize(states.size());
+    std::vector<std::vector<std::pair<char, uint32_t>>> ACTION_table(
+        states.size());
 
     for (size_t i = 0; i < states.size(); ++i) {
       ACTION_table[i].resize(token_id_map.size() + 1);
@@ -973,20 +1037,6 @@ public:
         }
       }
       std::cout << std::endl;
-    }
-
-    GOTO_table.resize(states.size());
-
-    for (size_t i = 0; i < states.size(); ++i) {
-      GOTO_table[i].resize(nonterminal_id_map.size());
-      for (size_t j = 0; j < nonterminal_id_map.size(); ++j) {
-        GOTO_table[i][j] = -1;
-      }
-      for (auto const &[k, v] : states[i].transitions) {
-        if (!k.is_terminal) {
-          GOTO_table[i][nonterminal_id_map[k.value]] = v;
-        }
-      }
     }
 
     std::cout << "| State |";
