@@ -1,0 +1,2 @@
+#define TOKEN_KIND_NULL 0
+#define TOKEN_KIND_EOF 1
