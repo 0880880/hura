@@ -1,7 +1,12 @@
 # ToDo
 
 - Emit parser simulator
-- Read parser definition from file
+   - Error handling
+      - External error module
+      - External Linkage and LLVM connection
+   - Test
+   - Read parser definition from file
+   - Enable optimizations
 - Connect lexer builder and parser builder
    - Normalize token ID
    - Build parser driver
@@ -9,6 +14,8 @@
 - Design Language
 - Create CLI Utility
 - Type Checker
+   - Surface type extraction (structs, function signatures)
+   - Parallelizable function body type checking
 - Testing!
 - Pipeline building
 - Error handling

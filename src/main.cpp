@@ -230,14 +230,16 @@ private:
 
   std::vector<std::vector<int>> GOTO_table;
 
+  std::map<size_t, llvm::BasicBlock *> reduce_bb_map;
+
   std::unique_ptr<llvm::Module> mod;
   std::unique_ptr<llvm::LLVMContext> context;
   std::map<std::string, uint8_t> token_kind_map;
   llvm::Function *function;
-  llvm::Type *i1_type;
-  llvm::Type *i8_type;
-  llvm::Type *i32_type;
-  llvm::Type *i64_type;
+  llvm::IntegerType *i1_type;
+  llvm::IntegerType *i8_type;
+  llvm::IntegerType *i32_type;
+  llvm::IntegerType *i64_type;
   llvm::Type *ptr_type;
   llvm::Type *void_type;
   llvm::StructType *node_type;
@@ -269,8 +271,8 @@ private:
         malloc_fn, llvm::ConstantInt::get(
                        i64_type, DL.getTypeAllocSize(inner_type) * reserved));
     builder.CreateStore(heap, sp_ptr);
-    builder.CreateStore(cap_ptr, llvm::ConstantInt::get(i64_type, reserved));
-    builder.CreateStore(len_ptr, llvm::ConstantInt::get(i64_type, 0));
+    builder.CreateStore(llvm::ConstantInt::get(i64_type, reserved), cap_ptr);
+    builder.CreateStore(llvm::ConstantInt::get(i64_type, 0), len_ptr);
   }
 
   llvm::Value *back_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
@@ -328,11 +330,11 @@ private:
 
     llvm::Value *back_ptr =
         builder.CreateGEP(inner_type, sp, len, "storage_back");
-    builder.CreateStore(back_ptr, val);
+    builder.CreateStore(val, back_ptr);
 
     llvm::Value *new_len =
         builder.CreateAdd(len, llvm::ConstantInt::get(i64_type, 1));
-    builder.CreateStore(len_ptr, new_len);
+    builder.CreateStore(new_len, len_ptr);
   }
 
   void pop_storage(llvm::IRBuilder<> &builder, llvm::Value *storage, int N) {
@@ -342,6 +344,19 @@ private:
     llvm::Value *new_len =
         builder.CreateSub(len, llvm::ConstantInt::get(i64_type, N));
     builder.CreateStore(new_len, len_ptr);
+  }
+
+  llvm::Value *peek_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
+                            llvm::Value *storage) {
+    llvm::Value *len_ptr =
+        builder.CreateStructGEP(storage_type, storage, 1, "get_len");
+    llvm::Value *len = builder.CreateLoad(i64_type, len_ptr);
+    llvm::Value *top =
+        builder.CreateSub(len, llvm::ConstantInt::get(i64_type, 1));
+    llvm::Value *sp_ptr =
+        builder.CreateStructGEP(storage_type, storage, 0, "get_ptr");
+    llvm::Value *sp = builder.CreateLoad(ptr_type, sp_ptr);
+    return builder.CreateGEP(inner_type, sp, top);
   }
 
   void free_storage(llvm::IRBuilder<> &builder, llvm::Value *storage) {
@@ -367,21 +382,21 @@ private:
     void_type = llvm::Type::getVoidTy(*context);
 
     // Node {
-    // i8 kind;
+    // ui8 kind;
     // ptr start;
     // ptr end;
-    // ptr children_start;
-    // i8 children_len;
+    // ui8 children_count;
+    // ui32 subtree_size;
     // }
-    std::vector<llvm::Type *> node_body = {i8_type, ptr_type, ptr_type,
-                                           ptr_type, i8_type};
+    std::vector<llvm::Type *> node_body = {i8_type, ptr_type, ptr_type, i8_type,
+                                           i32_type};
     node_type = llvm::StructType::create(*context, "Node");
     node_type->setBody(node_body);
 
     // Storage {
     // ptr storage;
-    // i64 len;
-    // i64 cap;
+    // ui64 len;
+    // ui64 cap;
     // }
     std::vector<llvm::Type *> storage_body = {ptr_type, i64_type, i64_type};
     storage_type = llvm::StructType::create(*context, "Stack");
@@ -400,8 +415,8 @@ private:
 
     builder.SetInsertPoint(entry);
 
-    fn_param_tokens = function->getOperand(0);
-    fn_param_len = function->getOperand(1);
+    fn_param_tokens = function->getArg(0);
+    fn_param_len = function->getArg(1);
 
     stack_alloca = builder.CreateAlloca(storage_type);
     nodes_alloca = builder.CreateAlloca(storage_type);
@@ -425,7 +440,6 @@ private:
     }
 
     free_storage(builder, stack_alloca);
-    free_storage(builder, nodes_alloca);
 
     if (llvm::verifyFunction(*function, &llvm::errs())) {
       std::cerr << "Function verification failed!\n";
@@ -478,45 +492,224 @@ private:
 
     builder.SetInsertPoint(data.start_bb);
 
-    llvm::Value *stack_back = back_storage(builder, i32_type, stack_alloca);
+    states_data.push_back(data);
+  }
+
+  llvm::BasicBlock *get_reduce_bb(llvm::IRBuilder<> &builder,
+                                  const LRItem &item, size_t rule_idx) {
+    if (reduce_bb_map.contains(rule_idx)) {
+      return reduce_bb_map[rule_idx];
+    }
+    llvm::BasicBlock *case_bb = llvm::BasicBlock::Create(
+        *context, "case_reduce_" + item.from, function);
+
+    auto saved = builder.saveIP();
+
+    builder.SetInsertPoint(case_bb);
+    // pop
+    pop_storage(builder, stack_alloca, rules[rule_idx].pop_count);
+    // push new state;
+
+    llvm::Value *top = peek_storage(builder, i32_type, stack_alloca);
+
+    int goto_cases = 0;
+
+    for (const std::vector<int> &g : GOTO_table) {
+      if (g[nonterminal_id_map[rules[rule_idx].from]] != -1) {
+        ++goto_cases;
+      }
+    }
 
     llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
 
-    llvm::Value *kind = builder.CreateGEP(i8_type, fn_param_tokens, i);
+    llvm::Value *kind_ptr = builder.CreateGEP(i8_type, fn_param_tokens, i);
 
-    llvm::Value *ext_kind =
-        builder.CreateZExt(kind, i32_type, "extend kind to 32-bit");
+    {
+      llvm::Value *len = builder.CreateLoad(
+          i64_type, builder.CreateStructGEP(storage_type, nodes_alloca, 1),
+          "nodes.len");
+      llvm::Value *idx = len;
+      for (size_t i = 0; i < rules[rule_idx].pop_count; ++i) {
+        llvm::Value *peek = peek_storage(builder, node_type, nodes_alloca);
+        llvm::Value *subtree_size = builder.CreateLoad(
+            i32_type,
+            builder.CreateStructGEP(node_type, peek, 4, "peek.subtree.ptr"));
+        idx = builder.CreateSub(idx, subtree_size);
+      }
+      llvm::Value *parent = llvm::UndefValue::get(node_type);
+      parent = builder.CreateInsertValue(
+          parent,
+          llvm::ConstantInt::get(
+              i8_type, nonterminal_id_map[rules[rule_idx].from] + 128),
+          0);
+      parent = builder.CreateInsertValue(
+          parent,
+          builder.CreateSelect(
+              llvm::ConstantInt::getBool(i1_type,
+                                         rules[rule_idx].pop_count > 0),
+              builder.CreateStructGEP(
+                  node_type,
+                  builder.CreateInBoundsGEP(
+                      node_type,
+                      builder.CreateLoad(
+                          ptr_type, builder.CreateStructGEP(storage_type,
+                                                            nodes_alloca, 0)),
+                      idx),
+                  1, "nodes[idx].start"),
+              kind_ptr, "start.select"),
+          1);
+      parent = builder.CreateInsertValue(
+          parent,
+          builder.CreateSelect(
+              llvm::ConstantInt::getBool(i1_type,
+                                         rules[rule_idx].pop_count > 0),
+              builder.CreateStructGEP(
+                  node_type,
+                  builder.CreateInBoundsGEP(
+                      node_type,
+                      builder.CreateLoad(
+                          ptr_type, builder.CreateStructGEP(storage_type,
+                                                            nodes_alloca, 0)),
+                      builder.CreateSub(len,
+                                        llvm::ConstantInt::get(i64_type, 1))),
+                  2, "nodes[len-1].end"),
+              kind_ptr, "end.select"),
+          2);
+      parent = builder.CreateInsertValue(
+          parent, llvm::ConstantInt::get(i8_type, rules[rule_idx].pop_count),
+          3);
+      parent = builder.CreateInsertValue(
+          parent,
+          builder.CreateSub(
+              builder.CreateAdd(len, llvm::ConstantInt::get(i32_type, 1)), idx),
+          2);
+    }
 
-    llvm::Value *shifted =
-        builder.CreateShl(ext_kind, llvm::ConstantInt::get(i32_type, 16));
+    llvm::SwitchInst *goto_sw =
+        builder.CreateSwitch(top, on_mismatch, goto_cases);
 
-    packed_condition = builder.CreateOr(shifted, stack_back);
+    for (size_t goto_state_idx = 0; goto_state_idx < GOTO_table.size();
+         ++goto_state_idx) {
+      const std::vector<int> &g = GOTO_table[goto_state_idx];
+      int dest = g[nonterminal_id_map[rules[rule_idx].from]];
 
-    states_data.push_back(data);
+      if (dest != -1) {
+        llvm::BasicBlock *goto_case_bb = llvm::BasicBlock::Create(
+            *context, "goto_case_" + std::to_string(dest), function);
+
+        builder.SetInsertPoint(goto_case_bb);
+
+        push_storage(builder, i32_type, stack_alloca,
+                     llvm::ConstantInt::get(i32_type, dest));
+
+        builder.CreateBr(states_data[dest].start_bb);
+
+        goto_sw->addCase(
+            llvm::ConstantInt::get(i32_type, goto_state_idx, false, true),
+            goto_case_bb);
+      }
+    }
+
+    builder.restoreIP(saved);
+
+    return reduce_bb_map[rule_idx] = case_bb;
   }
 
   void emit_state(size_t idx, const DFAState &state,
                   llvm::IRBuilder<> &builder) {
 
-    StateIRData &data = states_data[idx];
+    llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
 
-    llvm::SwitchInst *sw = builder.CreateSwitch(
-        packed_condition, nullptr /* on_mismatch */, state.transitions.size());
+    llvm::Value *kind_ptr = builder.CreateGEP(i8_type, fn_param_tokens, i);
+    llvm::Value *kind = builder.CreateLoad(i8_type, kind_ptr);
+
+    int num_cases = 0;
 
     for (auto const &[k, v] : state.transitions) {
+      if (!k.is_terminal) {
+        continue;
+      }
+      ++num_cases;
+    }
+
+    for (const LRItem &item : state.kernel) {
+      if (!item.eof()) {
+        continue;
+      }
+      num_cases += item.lookaheads.size();
+    }
+
+    for (const LRItem &item : state.closures) {
+      if (!item.eof()) {
+        continue;
+      }
+      num_cases += item.lookaheads.size();
+    }
+
+    llvm::SwitchInst *sw = builder.CreateSwitch(kind, on_mismatch, num_cases);
+
+    for (auto const &[k, v] : state.transitions) {
+      if (!k.is_terminal) {
+        continue;
+      }
       llvm::BasicBlock *case_bb = llvm::BasicBlock::Create(
-          *context, "case_" + k.to_string([this](uint8_t id) {
+          *context, "case_shift_" + k.to_string([this](uint8_t id) {
             return this->map_id(id);
           }) + "_to_" + std::to_string(v),
           function);
 
       builder.SetInsertPoint(case_bb);
-      if (k.is_terminal) {
-        // shift
-        push_storage(builder, i32_type, stack_alloca,
-                     llvm::ConstantInt::get(i32_type, v, false));
-        // do i++;
-        builder.CreateBr(states_data[v].start_bb);
+      push_storage(builder, i32_type, stack_alloca,
+                   llvm::ConstantInt::get(i32_type, v, false));
+      llvm::Value *increment =
+          builder.CreateAdd(i, llvm::ConstantInt::get(i64_type, 1));
+      builder.CreateStore(increment, i_alloca);
+
+      llvm::Value *node = llvm::UndefValue::get(node_type);
+      node = builder.CreateInsertValue(
+          node, llvm::ConstantInt::get(i8_type, k.token_kind), 0,
+          "node.insert.kind");
+      node = builder.CreateInsertValue(node, kind_ptr, 1, "node.insert.start");
+      node = builder.CreateInsertValue(
+          node, builder.CreateGEP(i8_type, fn_param_tokens, increment), 2,
+          "node.insert.end");
+      node = builder.CreateInsertValue(node, llvm::ConstantInt::get(i8_type, 0),
+                                       3, "node.insert.children_count");
+      node =
+          builder.CreateInsertValue(node, llvm::ConstantInt::get(i32_type, 1),
+                                    4, "node.insert.subtree_size");
+      push_storage(builder, node_type, nodes_alloca, node);
+      builder.CreateBr(states_data[v].start_bb);
+      sw->addCase(llvm::ConstantInt::get(i8_type, k.token_kind, false, true),
+                  case_bb);
+    }
+
+    std::vector<LRItem> reduce_cases;
+    reduce_cases.reserve(state.kernel.size() + state.closures.size());
+    reduce_cases.insert(reduce_cases.end(), state.kernel.begin(),
+                        state.kernel.end());
+    reduce_cases.insert(reduce_cases.end(), state.closures.begin(),
+                        state.closures.end());
+
+    for (const LRItem &item : reduce_cases) {
+      if (!item.eof()) {
+        continue;
+      }
+      if (item.from == start) {
+        llvm::BasicBlock *case_bb =
+            llvm::BasicBlock::Create(*context, "case_accept", function);
+        builder.SetInsertPoint(case_bb);
+
+        builder.CreateRet(builder.CreateLoad(storage_type, nodes_alloca));
+
+        sw->addCase(
+            llvm::ConstantInt::get(i8_type, TOKEN_KIND_EOF, false, true),
+            case_bb);
+        continue;
+      }
+      for (const Production &p : item.lookaheads) {
+        sw->addCase(llvm::ConstantInt::get(i8_type, p.token_kind, false, true),
+                    get_reduce_bb(builder, item, find_rule(item)));
       }
     }
   }
@@ -678,7 +871,7 @@ public:
     start = start + "_p";
   }
 
-  void build() {
+  void build(bool LALR1 = true) {
     {
       bool changed = true;
       while (changed) {
@@ -753,7 +946,13 @@ public:
       }
     }
 
-    // emit_ir();
+    create_GOTO();
+
+    if (LALR1) {
+      lalr1();
+    }
+
+    emit_ir();
   }
 
   void lalr1() {
@@ -905,47 +1104,46 @@ public:
   std::string map_id(uint8_t token_id) { return id_token_map[token_id]; }
 
   void validate() {
-    std::vector<std::vector<std::pair<char, uint32_t>>> ACTION_table(
-        states.size());
+    std::vector<std::vector<std::string>> ACTION_table(states.size());
 
     for (size_t i = 0; i < states.size(); ++i) {
       ACTION_table[i].resize(token_id_map.size() + 1);
       for (auto const &[k, v] : states[i].transitions) {
         if (k.is_terminal) {
-          ACTION_table[i][k.token_kind] = std::make_pair('s', v);
+          ACTION_table[i][k.token_kind] = "s" + std::to_string(v);
         }
       }
       for (const LRItem &item : states[i].kernel) {
         if (item.eof()) {
           if (item.from == start) {
-            ACTION_table[i][TOKEN_KIND_EOF] = std::make_pair('a', 0);
+            ACTION_table[i][TOKEN_KIND_EOF] = "a";
             continue;
           }
           for (const Production &p : item.lookaheads) {
-            if (ACTION_table[i][p.token_kind] != std::pair<char, uint32_t>{} &&
+            if (ACTION_table[i][p.token_kind] != "" &&
                 ACTION_table[i][p.token_kind] !=
-                    std::make_pair('r', find_rule(item))) {
+                    ("r" + std::to_string(find_rule(item)))) {
               throw std::runtime_error("ACTION table conflic at (" +
                                        std::to_string(i) + ", " +
                                        std::to_string(p.token_kind) + ")");
             }
             ACTION_table[i][p.token_kind] =
-                std::make_pair('r', find_rule(item));
+                ("r" + std::to_string(find_rule(item)));
           }
         }
       }
       for (const LRItem &item : states[i].closures) {
         if (item.eof()) {
           for (const Production &p : item.lookaheads) {
-            if (ACTION_table[i][p.token_kind] != std::pair<char, uint32_t>{} &&
+            if (ACTION_table[i][p.token_kind] != "" &&
                 ACTION_table[i][p.token_kind] !=
-                    std::make_pair('r', find_rule(item))) {
+                    ("r" + std::to_string(find_rule(item)))) {
               throw std::runtime_error("ACTION table conflic at (" +
                                        std::to_string(i) + ", " +
                                        std::to_string(p.token_kind) + ")");
             }
             ACTION_table[i][p.token_kind] =
-                std::make_pair('r', find_rule(item));
+                ("r" + std::to_string(find_rule(item)));
           }
         }
       }
@@ -1149,11 +1347,10 @@ int main() {
   pb.set_start("A");
   pb.augment();
   pb.build();
-  pb.lalr1();
 
   pb.write_mermaid();
 
-  pb.simulate({3, 2, 3, 3, 2, 2, TOKEN_KIND_EOF});
+  // pb.simulate({3, 2, 3, 3, 2, 2, TOKEN_KIND_EOF});
 
   return 0;
 }
