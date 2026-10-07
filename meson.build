@@ -21,5 +21,6 @@ llvm_dep = dependency(
 
 executable('hura',
   sources : ['src/main.cpp'],
+  include_directories : include_directories('include'),
   dependencies : [llvm_dep],
   install : true)
