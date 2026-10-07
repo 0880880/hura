@@ -1,10 +1,6 @@
 # ToDo
 
 - Emit parser simulator
-   - Error handling
-      - External error module
-      - External Linkage and LLVM connection
-   - Test
    - Read parser definition from file
    - Enable optimizations
 - Connect lexer builder and parser builder
