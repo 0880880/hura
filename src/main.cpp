@@ -253,8 +253,6 @@ private:
   llvm::Value *fn_param_tokens;
   llvm::Value *fn_param_len;
 
-  llvm::Value *packed_condition;
-
   void reserve_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
                        llvm::Value *storage, size_t reserved) {
     llvm::Value *sp_ptr =
@@ -486,8 +484,7 @@ private:
     mod->print(dest, nullptr);
   }
 
-  void setup_state(size_t idx, const DFAState &state,
-                   llvm::IRBuilder<> &builder) {
+  void setup_state(size_t idx, const DFAState &_, llvm::IRBuilder<> &builder) {
 
     StateIRData data;
 
