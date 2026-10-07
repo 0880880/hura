@@ -31,6 +31,7 @@
 #include <llvm/Transforms/Scalar/SimplifyCFG.h>
 
 #include "base.h"
+#include "error.hpp"
 
 struct Production {
   bool is_terminal;
@@ -224,7 +225,7 @@ private:
   std::deque<StateIRData> states_data;
   std::map<std::vector<Production>, std::set<Production>> first_table;
 
-  std::map<std::string, size_t> nonterminal_id_map;
+  std::map<std::string, uint8_t> nonterminal_id_map;
   std::map<std::string, uint8_t> token_id_map;
   std::map<uint8_t, std::string> id_token_map;
 
@@ -240,7 +241,7 @@ private:
   llvm::IntegerType *i8_type;
   llvm::IntegerType *i32_type;
   llvm::IntegerType *i64_type;
-  llvm::Type *ptr_type;
+  llvm::PointerType *ptr_type;
   llvm::Type *void_type;
   llvm::StructType *node_type;
   llvm::StructType *storage_type;
@@ -440,6 +441,9 @@ private:
     }
 
     free_storage(builder, stack_alloca);
+    free_storage(builder, nodes_alloca);
+
+    builder.CreateRet(llvm::ConstantPointerNull::get(ptr_type));
 
     if (llvm::verifyFunction(*function, &llvm::errs())) {
       std::cerr << "Function verification failed!\n";
@@ -504,6 +508,35 @@ private:
         *context, "case_reduce_" + item.from, function);
 
     auto saved = builder.saveIP();
+
+    llvm::BasicBlock *error_handler =
+        llvm::BasicBlock::Create(*context, "error", function);
+    {
+
+      builder.SetInsertPoint(error_handler);
+
+      builder.CreateUnreachable();
+
+      llvm::FunctionCallee throw_fn =
+          mod->getOrInsertFunction("parser_throw", void_type, i8_type, i64_type,
+                                   i8_type, ptr_type, i64_type);
+
+      llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
+
+      llvm::Value *kind_ptr = builder.CreateGEP(i8_type, fn_param_tokens, i);
+      llvm::Value *kind = builder.CreateLoad(i8_type, kind_ptr);
+
+      builder.CreateCall(
+          throw_fn, {llvm::ConstantInt::get(
+                         i8_type, static_cast<uint8_t>(ParserErrorKind::OTHER)),
+                     i, kind, llvm::ConstantPointerNull::get(ptr_type),
+                     llvm::ConstantInt::get(i64_type, 0)});
+
+      free_storage(builder, stack_alloca);
+      free_storage(builder, nodes_alloca);
+
+      builder.CreateRet(llvm::ConstantPointerNull::get(ptr_type));
+    }
 
     builder.SetInsertPoint(case_bb);
     // pop
@@ -586,7 +619,7 @@ private:
     }
 
     llvm::SwitchInst *goto_sw =
-        builder.CreateSwitch(top, on_mismatch, goto_cases);
+        builder.CreateSwitch(top, error_handler, goto_cases);
 
     for (size_t goto_state_idx = 0; goto_state_idx < GOTO_table.size();
          ++goto_state_idx) {
@@ -646,7 +679,54 @@ private:
       num_cases += item.lookaheads.size();
     }
 
-    llvm::SwitchInst *sw = builder.CreateSwitch(kind, on_mismatch, num_cases);
+    llvm::BasicBlock *error_handler =
+        llvm::BasicBlock::Create(*context, "error", function);
+    {
+
+      builder.SetInsertPoint(error_handler);
+
+      std::vector<uint8_t> expected(state.transitions.size());
+      int idx = 0;
+      for (auto const &[k, v] : state.transitions) {
+        if (k.is_epsilon) {
+          continue;
+        }
+        expected[idx++] =
+            k.is_terminal ? k.token_kind : nonterminal_id_map[k.value];
+      }
+
+      llvm::Constant *init = llvm::ConstantDataArray::get(*context, expected);
+
+      auto *set_global = new llvm::GlobalVariable(
+          *mod, init->getType(),
+          /*isConstant=*/true, llvm::GlobalValue::PrivateLinkage, init,
+          "expected_" + std::to_string(idx));
+
+      llvm::FunctionCallee throw_fn =
+          mod->getOrInsertFunction("parser_throw", void_type, i8_type, i64_type,
+                                   i8_type, ptr_type, i64_type);
+
+      llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
+
+      llvm::Value *kind_ptr = builder.CreateGEP(i8_type, fn_param_tokens, i);
+      llvm::Value *kind = builder.CreateLoad(i8_type, kind_ptr);
+
+      builder.CreateCall(
+          throw_fn,
+          {llvm::ConstantInt::get(
+               i8_type, static_cast<uint8_t>(ParserErrorKind::UNEXPECTED)),
+           i, kind, set_global,
+           llvm::ConstantInt::get(i64_type, state.transitions.size())});
+
+      free_storage(builder, stack_alloca);
+      free_storage(builder, nodes_alloca);
+
+      builder.CreateRet(llvm::ConstantPointerNull::get(ptr_type));
+    }
+
+    builder.SetInsertPoint(states_data[idx].start_bb);
+
+    llvm::SwitchInst *sw = builder.CreateSwitch(kind, error_handler, num_cases);
 
     for (auto const &[k, v] : state.transitions) {
       if (!k.is_terminal) {
