@@ -1237,12 +1237,15 @@ public:
       def.from = parts[0];
       std::vector<std::string> ors = split_by_string(parts[1], " | ");
       for (const std::string &s : ors) {
-        if (s == "ε") {
-          def.g.push_back(Production::epsilon());
-        } else if (token_id_map.contains(s)) {
-          def.g.push_back(Production::terminal(token_id_map[s]));
-        } else {
-          def.g.push_back(Production::nonterminal(s));
+        std::vector<std::string> prods = split_by_string(s, " ");
+        for (const std::string &p : prods) {
+          if (s == "ε") {
+            def.g.push_back(Production::epsilon());
+          } else if (token_id_map.contains(p)) {
+            def.g.push_back(Production::terminal(token_id_map[p]));
+          } else {
+            def.g.push_back(Production::nonterminal(p));
+          }
         }
       }
 
