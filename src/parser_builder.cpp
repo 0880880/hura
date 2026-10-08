@@ -363,13 +363,14 @@ private:
                             llvm::Value *storage) {
     llvm::Value *sp_ptr =
         builder.CreateStructGEP(storage_type, storage, 0, "get_ptr");
+    llvm::Value *sp = builder.CreateLoad(ptr_type, sp_ptr);
     llvm::Value *len_ptr =
         builder.CreateStructGEP(storage_type, storage, 1, "get_len");
     llvm::Value *len = builder.CreateLoad(i64_type, len_ptr);
 
     llvm::Value *end =
         builder.CreateSub(len, llvm::ConstantInt::get(i64_type, 1));
-    return builder.CreateInBoundsGEP(inner_type, sp_ptr, end);
+    return builder.CreateInBoundsGEP(inner_type, sp, end);
   }
 
   llvm::Value *peek_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
