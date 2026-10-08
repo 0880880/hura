@@ -671,9 +671,14 @@ private:
           3);
       parent = builder.CreateInsertValue(
           parent,
-          builder.CreateSub(
-              builder.CreateAdd(len, llvm::ConstantInt::get(i32_type, 1)), idx),
+          builder.CreateTrunc(
+              builder.CreateSub(
+                  builder.CreateAdd(len, llvm::ConstantInt::get(i64_type, 1)),
+                  idx),
+              i32_type),
           4);
+
+      push_storage(builder, node_type, nodes_alloca, parent);
     }
 
     llvm::SwitchInst *goto_sw =
