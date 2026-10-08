@@ -684,6 +684,8 @@ private:
   void emit_state(size_t idx, const DFAState &state,
                   llvm::IRBuilder<> &builder) {
 
+    builder.SetInsertPoint(states_data[idx].start_bb);
+
     llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
 
     llvm::Value *kind_ptr = builder.CreateGEP(i8_type, fn_param_tokens, i);
@@ -825,6 +827,8 @@ private:
                     get_reduce_bb(builder, item, find_rule(item)));
       }
     }
+    builder.CreateRet(
+        llvm::ConstantPointerNull::get(ptr_type)); // is this needed?
   }
 
   void load_lexer_definition(const std::string source = "language.tex") {
