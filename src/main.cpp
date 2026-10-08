@@ -448,30 +448,30 @@ private:
       return;
     }
 
-    // llvm::LoopAnalysisManager LAM;
-    // llvm::FunctionAnalysisManager FAM;
-    // llvm::CGSCCAnalysisManager CGAM;
-    // llvm::ModuleAnalysisManager MAM;
+    llvm::LoopAnalysisManager LAM;
+    llvm::FunctionAnalysisManager FAM;
+    llvm::CGSCCAnalysisManager CGAM;
+    llvm::ModuleAnalysisManager MAM;
 
-    // llvm::PassBuilder PB;
-    // PB.registerModuleAnalyses(MAM);
-    // PB.registerCGSCCAnalyses(CGAM);
-    // PB.registerFunctionAnalyses(FAM);
-    // PB.registerLoopAnalyses(LAM);
-    // PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+    llvm::PassBuilder PB;
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-    // llvm::FunctionPassManager FPM;
-    // FPM.addPass(llvm::PromotePass());
-    // FPM.addPass(llvm::SimplifyCFGPass());
-    // FPM.addPass(llvm::JumpThreadingPass());
-    // FPM.addPass(llvm::SCCPPass());
-    // FPM.addPass(llvm::GVNPass());
+    llvm::FunctionPassManager FPM;
+    FPM.addPass(llvm::PromotePass());
+    FPM.addPass(llvm::SimplifyCFGPass());
+    FPM.addPass(llvm::JumpThreadingPass());
+    FPM.addPass(llvm::SCCPPass());
+    FPM.addPass(llvm::GVNPass());
 
-    // llvm::ModulePassManager MPM =
-    //     PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
-    // MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
+    llvm::ModulePassManager MPM =
+        PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+    MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
 
-    // MPM.run(*module, MAM);
+    MPM.run(*module, MAM);
 
     std::error_code EC;
     llvm::raw_fd_ostream dest("parser.ll", EC);
@@ -789,6 +789,38 @@ private:
                     get_reduce_bb(builder, item, find_rule(item)));
       }
     }
+  }
+
+  void load_lexer_definition(const std::string source = "language.tex") {
+
+    std::ifstream file(source);
+
+    if (!file.is_open()) {
+      std::cerr << "Error: Could not open file." << std::endl;
+      return;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+      if (line.empty()) {
+        continue;
+      }
+
+      std::vector<std::string> parts = split_by_string(line, ": ");
+
+      if (parts.size() != 2) {
+        std::cerr << "Error: Invalid lexer file." << std::endl;
+        return;
+      }
+
+      token_id_map[parts[0]] = token_id_map.size() + 2;
+      id_token_map[id_token_map.size() + 2] = parts[0];
+    }
+
+    token_id_map["$"] = TOKEN_KIND_EOF;
+    id_token_map[TOKEN_KIND_EOF] = "$";
+
+    file.close();
   }
 
   std::vector<GrammarDefinition> find(const std::string name) {
@@ -1140,9 +1172,11 @@ public:
     ofs.close();
   }
 
-  void load_lexer_definition(const std::string source = "language.tex") {
+  void load(const std::string lexer = "language.lex",
+            const std::string grammar = "language.grammar") {
+    load_lexer_definition(lexer);
 
-    std::ifstream file(source);
+    std::ifstream file(grammar);
 
     if (!file.is_open()) {
       std::cerr << "Error: Could not open file." << std::endl;
@@ -1155,21 +1189,49 @@ public:
         continue;
       }
 
-      std::vector<std::string> parts = split_by_string(line, ": ");
+      std::vector<std::string> parts = split_by_string(line, " -> ");
 
       if (parts.size() != 2) {
-        std::cerr << "Error: Could not read lexer definition." << std::endl;
+        std::cerr << "Error: Invalid grammar file." << std::endl;
         return;
       }
 
-      std::cout << "Adding \"" << parts[0] << "\" *= \\" << parts[1] << "\\"
-                << std::endl;
-      token_id_map[parts[0]] = token_id_map.size() + 2;
-      id_token_map[id_token_map.size() + 2] = parts[0];
+      GrammarDefinition def{};
+      def.from = parts[0];
+      std::vector<std::string> ors = split_by_string(parts[1], " | ");
+      for (const std::string &s : ors) {
+        if (s == "ε") {
+          def.g.push_back(Production::epsilon());
+        } else if (token_id_map.contains(s)) {
+          def.g.push_back(Production::terminal(token_id_map[s]));
+        } else {
+          def.g.push_back(Production::nonterminal(s));
+        }
+      }
+
+      add(def);
     }
 
-    token_id_map["$"] = TOKEN_KIND_EOF;
-    id_token_map[TOKEN_KIND_EOF] = "$";
+    for (const GrammarDefinition &def : grammarDefinitions) {
+      for (const Production &p : def.g) {
+        if (p.is_terminal || p.is_epsilon) {
+          continue;
+        }
+        bool found = false;
+        for (const GrammarDefinition &other : grammarDefinitions) {
+          if (other.from != p.value) {
+            continue;
+          }
+          found = true;
+          break;
+        }
+        if (found) {
+          break;
+        } else {
+          std::cerr << "Empty definition for " << p.value << std::endl;
+        }
+      }
+    }
 
     file.close();
   }
@@ -1373,7 +1435,7 @@ int main() {
 
   ParserBuilder pb;
 
-  pb.load_lexer_definition("parser_test.lex");
+  pb.load("parser_test.lex", "language.grammar");
 
   {
     GrammarDefinition def;

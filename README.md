@@ -1,8 +1,5 @@
 # ToDo
 
-- Emit parser simulator
-   - Read parser definition from file
-   - Enable optimizations
 - Connect lexer builder and parser builder
    - Normalize token ID
    - Build parser driver
