@@ -471,7 +471,7 @@ private:
         PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
     MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
 
-    MPM.run(*module, MAM);
+    MPM.run(*mod, MAM);
 
     std::error_code EC;
     llvm::raw_fd_ostream dest("parser.ll", EC);
