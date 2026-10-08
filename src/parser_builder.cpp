@@ -1172,11 +1172,11 @@ public:
       }
     }
 
-    create_GOTO();
-
     if (LALR1) {
       lalr1();
     }
+
+    create_GOTO();
 
     emit_ir();
 
