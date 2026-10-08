@@ -293,6 +293,8 @@ private:
 
   void push_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
                     llvm::Value *storage, llvm::Value *val) {
+
+    auto IP = builder.saveIP();
     llvm::Value *len_ptr =
         builder.CreateStructGEP(storage_type, storage, 1, "get_len");
     llvm::Value *len = builder.CreateLoad(i64_type, len_ptr);
@@ -309,35 +311,43 @@ private:
     builder.CreateCondBr(should_realloc, realloc_br, resume_br);
 
     builder.SetInsertPoint(realloc_br);
+    {
+      llvm::FunctionCallee realloc_fn =
+          mod->getOrInsertFunction("realloc", ptr_type, ptr_type, i64_type);
+      const llvm::DataLayout &DL = mod->getDataLayout();
 
-    llvm::FunctionCallee realloc_fn =
-        mod->getOrInsertFunction("realloc", ptr_type, ptr_type, i64_type);
-    const llvm::DataLayout &DL = mod->getDataLayout();
-
-    llvm::Value *sp_ptr =
-        builder.CreateStructGEP(storage_type, storage, 0, "get_ptr");
-    llvm::Value *sp = builder.CreateLoad(ptr_type, sp_ptr);
-    llvm::Value *new_cap =
-        builder.CreateShl(cap, llvm::ConstantInt::get(i64_type, 1));
-    builder.CreateStore(new_cap, cap_ptr);
-    llvm::Value *new_size = builder.CreateMul(
-        new_cap,
-        llvm::ConstantInt::get(i64_type, DL.getTypeAllocSize(inner_type)));
-    llvm::Value *new_ptr =
-        builder.CreateCall(realloc_fn, {sp, new_size}, "realloc_storage");
-    builder.CreateStore(new_ptr, sp_ptr);
-    builder.CreateBr(resume_br);
+      llvm::Value *sp_ptr =
+          builder.CreateStructGEP(storage_type, storage, 0, "get_ptr");
+      llvm::Value *sp = builder.CreateLoad(ptr_type, sp_ptr);
+      llvm::Value *new_cap =
+          builder.CreateShl(cap, llvm::ConstantInt::get(i64_type, 1));
+      builder.CreateStore(new_cap, cap_ptr);
+      llvm::Value *new_size = builder.CreateMul(
+          new_cap,
+          llvm::ConstantInt::get(i64_type, DL.getTypeAllocSize(inner_type)));
+      llvm::Value *new_ptr =
+          builder.CreateCall(realloc_fn, {sp, new_size}, "realloc_storage");
+      builder.CreateStore(new_ptr, sp_ptr);
+      builder.CreateBr(resume_br);
+    }
     builder.SetInsertPoint(resume_br);
 
-    sp = builder.CreateLoad(ptr_type, sp_ptr);
+    {
+      llvm::Value *sp_ptr =
+          builder.CreateStructGEP(storage_type, storage, 0, "get_ptr");
+      llvm::Value *sp = builder.CreateLoad(ptr_type, sp_ptr);
+      sp = builder.CreateLoad(ptr_type, sp_ptr);
 
-    llvm::Value *back_ptr =
-        builder.CreateGEP(inner_type, sp, len, "storage_back");
-    builder.CreateStore(val, back_ptr);
+      llvm::Value *back_ptr =
+          builder.CreateGEP(inner_type, sp, len, "storage_back");
+      builder.CreateStore(val, back_ptr);
 
-    llvm::Value *new_len =
-        builder.CreateAdd(len, llvm::ConstantInt::get(i64_type, 1));
-    builder.CreateStore(new_len, len_ptr);
+      llvm::Value *new_len =
+          builder.CreateAdd(len, llvm::ConstantInt::get(i64_type, 1));
+      builder.CreateStore(new_len, len_ptr);
+    }
+
+    builder.restoreIP(IP);
   }
 
   void pop_storage(llvm::IRBuilder<> &builder, llvm::Value *storage, int N) {
