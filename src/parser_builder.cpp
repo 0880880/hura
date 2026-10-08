@@ -609,36 +609,32 @@ private:
           0);
       parent = builder.CreateInsertValue(
           parent,
-          builder.CreateSelect(
-              llvm::ConstantInt::getBool(i1_type,
-                                         rules[rule_idx].pop_count > 0),
-              builder.CreateStructGEP(
-                  node_type,
-                  builder.CreateInBoundsGEP(
-                      node_type,
-                      builder.CreateLoad(
-                          ptr_type, builder.CreateStructGEP(storage_type,
-                                                            nodes_alloca, 0)),
-                      idx),
-                  1, "nodes[idx].start"),
-              kind_ptr, "start.select"),
+          rules[rule_idx].pop_count > 0
+              ? (builder.CreateStructGEP(
+                    node_type,
+                    builder.CreateInBoundsGEP(
+                        node_type,
+                        builder.CreateLoad(
+                            ptr_type, builder.CreateStructGEP(storage_type,
+                                                              nodes_alloca, 0)),
+                        idx),
+                    1, "nodes[idx].start"))
+              : (kind_ptr),
           1);
       parent = builder.CreateInsertValue(
           parent,
-          builder.CreateSelect(
-              llvm::ConstantInt::getBool(i1_type,
-                                         rules[rule_idx].pop_count > 0),
-              builder.CreateStructGEP(
-                  node_type,
-                  builder.CreateInBoundsGEP(
-                      node_type,
-                      builder.CreateLoad(
-                          ptr_type, builder.CreateStructGEP(storage_type,
-                                                            nodes_alloca, 0)),
-                      builder.CreateSub(len,
-                                        llvm::ConstantInt::get(i64_type, 1))),
-                  2, "nodes[len-1].end"),
-              kind_ptr, "end.select"),
+          rules[rule_idx].pop_count > 0
+              ? (builder.CreateStructGEP(
+                    node_type,
+                    builder.CreateInBoundsGEP(
+                        node_type,
+                        builder.CreateLoad(
+                            ptr_type, builder.CreateStructGEP(storage_type,
+                                                              nodes_alloca, 0)),
+                        builder.CreateSub(len,
+                                          llvm::ConstantInt::get(i64_type, 1))),
+                    2, "nodes[len-1].end"))
+              : (kind_ptr),
           2);
       parent = builder.CreateInsertValue(
           parent, llvm::ConstantInt::get(i8_type, rules[rule_idx].pop_count),
