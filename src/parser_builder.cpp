@@ -620,11 +620,14 @@ private:
           i64_type, builder.CreateStructGEP(storage_type, nodes_alloca, 1),
           "nodes.len");
       llvm::Value *idx = len;
+      llvm::Value *sp = builder.CreateLoad(
+          ptr_type, builder.CreateStructGEP(storage_type, nodes_alloca, 0));
       for (size_t i = 0; i < rules[rule_idx].pop_count; ++i) {
-        llvm::Value *peek = back_storage(builder, node_type, nodes_alloca);
+        llvm::Value *child =
+            builder.CreateInBoundsGEP(node_type, sp, idx, "nodes.idx");
         llvm::Value *subtree_size = builder.CreateLoad(
             i32_type,
-            builder.CreateStructGEP(node_type, peek, 4, "peek.subtree.ptr"));
+            builder.CreateStructGEP(node_type, child, 4, "peek.subtree.ptr"));
         idx = builder.CreateSub(
             idx, builder.CreateZExt(subtree_size, i64_type, "extend_subtree"));
       }
