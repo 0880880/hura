@@ -551,25 +551,28 @@ private:
 
       builder.CreateUnreachable();
 
-      llvm::FunctionCallee throw_fn =
-          mod->getOrInsertFunction("parser_throw", void_type, i8_type, i64_type,
-                                   i8_type, ptr_type, i64_type);
-
-      llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
-
-      llvm::Value *kind_ptr = builder.CreateGEP(i8_type, fn_param_tokens, i);
-      llvm::Value *kind = builder.CreateLoad(i8_type, kind_ptr);
-
-      builder.CreateCall(
-          throw_fn, {llvm::ConstantInt::get(
-                         i8_type, static_cast<uint8_t>(ParserErrorKind::OTHER)),
-                     i, kind, llvm::ConstantPointerNull::get(ptr_type),
-                     llvm::ConstantInt::get(i64_type, 0)});
-
-      free_storage(builder, stack_alloca);
-      free_storage(builder, nodes_alloca);
-
-      builder.CreateRet(llvm::ConstantPointerNull::get(ptr_type));
+      //       llvm::FunctionCallee throw_fn =
+      //           mod->getOrInsertFunction("parser_throw", void_type, i8_type,
+      //           i64_type,
+      //                                    i8_type, ptr_type, i64_type);
+      //
+      //       llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
+      //
+      //       llvm::Value *kind_ptr = builder.CreateGEP(i8_type,
+      //       fn_param_tokens, i); llvm::Value *kind =
+      //       builder.CreateLoad(i8_type, kind_ptr);
+      //
+      //       builder.CreateCall(
+      //           throw_fn, {llvm::ConstantInt::get(
+      //                          i8_type,
+      //                          static_cast<uint8_t>(ParserErrorKind::OTHER)),
+      //                      i, kind, llvm::ConstantPointerNull::get(ptr_type),
+      //                      llvm::ConstantInt::get(i64_type, 0)});
+      //
+      //       free_storage(builder, stack_alloca);
+      //       free_storage(builder, nodes_alloca);
+      //
+      //       builder.CreateRet(llvm::ConstantPointerNull::get(ptr_type));
     }
 
     builder.SetInsertPoint(case_bb);
