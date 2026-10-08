@@ -647,7 +647,7 @@ private:
           parent,
           builder.CreateSub(
               builder.CreateAdd(len, llvm::ConstantInt::get(i32_type, 1)), idx),
-          2);
+          4);
     }
 
     llvm::SwitchInst *goto_sw =
