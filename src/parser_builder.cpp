@@ -294,7 +294,8 @@ private:
   void push_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
                     llvm::Value *storage, llvm::Value *val) {
 
-    auto IP = builder.saveIP();
+    llvm::BasicBlock *exit = builder.GetInsertBlock();
+
     llvm::Value *len_ptr =
         builder.CreateStructGEP(storage_type, storage, 1, "get_len");
     llvm::Value *len = builder.CreateLoad(i64_type, len_ptr);
@@ -345,9 +346,9 @@ private:
       llvm::Value *new_len =
           builder.CreateAdd(len, llvm::ConstantInt::get(i64_type, 1));
       builder.CreateStore(new_len, len_ptr);
-    }
 
-    builder.restoreIP(IP);
+      builder.CreateBr(exit);
+    }
   }
 
   void pop_storage(llvm::IRBuilder<> &builder, llvm::Value *storage, int N) {
