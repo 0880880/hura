@@ -403,17 +403,17 @@ private:
     headerFile << std::endl
                << "struct Node {" << std::endl
                << "  uint8_t kind;" << std::endl
-               << "  uint8_t *start" << std::endl
-               << "  uint8_t *end" << std::endl
-               << "  uint8_t children_count" << std::endl
-               << "  uint32_t subtree_size" << std::endl
+               << "  uint8_t *start;" << std::endl
+               << "  uint8_t *end;" << std::endl
+               << "  uint8_t children_count;" << std::endl
+               << "  uint32_t subtree_size;" << std::endl
                << "};" << std::endl;
 
     headerFile << std::endl
                << "struct Nodes {" << std::endl
                << "  Node *nodes;" << std::endl
-               << "  size_t len" << std::endl
-               << "  size_t cap" << std::endl
+               << "  size_t len;" << std::endl
+               << "  size_t cap;" << std::endl
                << "};" << std::endl;
 
     headerFile << "Nodes parse(uint8_t* tokens, size_t len);" << std::endl;
