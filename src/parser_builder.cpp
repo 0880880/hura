@@ -496,10 +496,7 @@ private:
 
     builder.SetInsertPoint(entry);
 
-    free_storage(builder, stack_alloca);
-    free_storage(builder, nodes_alloca);
-
-    builder.CreateRet(llvm::Constant::getNullValue(storage_type));
+    builder.CreateBr(states_data[0].start_bb);
 
     if (llvm::verifyFunction(*function, &llvm::errs())) {
       std::cerr << "Function verification failed!\n";
