@@ -122,6 +122,23 @@ struct LRItem {
     return from + " -> " + gs;
   }
 
+  std::string
+  to_label(const std::function<std::string(uint8_t)> &mapper) const {
+    std::string gs;
+    for (size_t i = 0; i < prods.size(); ++i) {
+      const Production &prod = prods[i];
+      gs += "_";
+      gs += prod.to_string(mapper);
+    }
+    if (!lookaheads.empty()) {
+      for (const Production &la : lookaheads) {
+        gs += "__";
+        gs += la.to_string(mapper);
+      }
+    }
+    return from + "_to_" + gs;
+  }
+
   constexpr bool lalr_equals(const LRItem &other) const {
     return from == other.from && prods == other.prods && cursor == other.cursor;
   }
@@ -274,19 +291,6 @@ private:
     builder.CreateStore(llvm::ConstantInt::get(i64_type, 0), len_ptr);
   }
 
-  llvm::Value *back_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
-                            llvm::Value *storage) {
-    llvm::Value *sp_ptr =
-        builder.CreateStructGEP(storage_type, storage, 0, "get_ptr");
-    llvm::Value *len_ptr =
-        builder.CreateStructGEP(storage_type, storage, 1, "get_len");
-    llvm::Value *len = builder.CreateLoad(i64_type, len_ptr);
-
-    llvm::Value *end =
-        builder.CreateSub(len, llvm::ConstantInt::get(i64_type, 1));
-    return builder.CreateGEP(inner_type, sp_ptr, end);
-  }
-
   void push_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
                     llvm::Value *storage, llvm::Value *val) {
     llvm::Value *len_ptr =
@@ -345,17 +349,23 @@ private:
     builder.CreateStore(new_len, len_ptr);
   }
 
-  llvm::Value *peek_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
+  llvm::Value *back_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
                             llvm::Value *storage) {
+    llvm::Value *sp_ptr =
+        builder.CreateStructGEP(storage_type, storage, 0, "get_ptr");
     llvm::Value *len_ptr =
         builder.CreateStructGEP(storage_type, storage, 1, "get_len");
     llvm::Value *len = builder.CreateLoad(i64_type, len_ptr);
-    llvm::Value *top =
+
+    llvm::Value *end =
         builder.CreateSub(len, llvm::ConstantInt::get(i64_type, 1));
-    llvm::Value *sp_ptr =
-        builder.CreateStructGEP(storage_type, storage, 0, "get_ptr");
-    llvm::Value *sp = builder.CreateLoad(ptr_type, sp_ptr);
-    return builder.CreateGEP(inner_type, sp, top);
+    return builder.CreateInBoundsGEP(inner_type, sp_ptr, end);
+  }
+
+  llvm::Value *peek_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
+                            llvm::Value *storage) {
+    return builder.CreateLoad(inner_type,
+                              back_storage(builder, inner_type, storage));
   }
 
   void free_storage(llvm::IRBuilder<> &builder, llvm::Value *storage) {
@@ -539,14 +549,16 @@ private:
       return reduce_bb_map[rule_idx];
     }
     llvm::BasicBlock *case_bb = llvm::BasicBlock::Create(
-        *context, "case_reduce_" + item.from, function);
+        *context,
+        "case_reduce_" +
+            item.to_label(([this](uint8_t id) { return this->map_id(id); })),
+        function);
 
     auto saved = builder.saveIP();
 
     llvm::BasicBlock *error_handler =
         llvm::BasicBlock::Create(*context, "error", function);
     {
-
       builder.SetInsertPoint(error_handler);
 
       builder.CreateUnreachable();
@@ -806,29 +818,41 @@ private:
     reduce_cases.insert(reduce_cases.end(), state.closures.begin(),
                         state.closures.end());
 
+    std::map<uint8_t, size_t> reduce_by_token;
+
     for (const LRItem &item : reduce_cases) {
       if (!item.eof()) {
         continue;
       }
       if (item.from == start) {
-        llvm::BasicBlock *case_bb =
-            llvm::BasicBlock::Create(*context, "case_accept", function);
-        builder.SetInsertPoint(case_bb);
+        if (!reduce_by_token.contains(TOKEN_KIND_EOF)) {
+          reduce_by_token[TOKEN_KIND_EOF] = SIZE_MAX;
+          llvm::BasicBlock *case_bb =
+              llvm::BasicBlock::Create(*context, "case_accept", function);
+          builder.SetInsertPoint(case_bb);
 
-        builder.CreateRet(builder.CreateLoad(storage_type, nodes_alloca));
+          builder.CreateRet(builder.CreateLoad(storage_type, nodes_alloca));
 
-        sw->addCase(
-            llvm::ConstantInt::get(i8_type, TOKEN_KIND_EOF, false, true),
-            case_bb);
+          sw->addCase(
+              llvm::ConstantInt::get(i8_type, TOKEN_KIND_EOF, false, true),
+              case_bb);
+        }
         continue;
       }
+      size_t rule = find_rule(item);
       for (const Production &p : item.lookaheads) {
+        auto [it, inserted] = reduce_by_token.try_emplace(p.token_kind, rule);
+        if (!inserted) {
+          if (it->second != rule) {
+            throw std::runtime_error("reduce/reduce conflict in state " +
+                                     std::to_string(idx));
+          }
+          continue;
+        }
         sw->addCase(llvm::ConstantInt::get(i8_type, p.token_kind, false, true),
-                    get_reduce_bb(builder, item, find_rule(item)));
+                    get_reduce_bb(builder, item, rule));
       }
     }
-    builder.CreateRet(
-        llvm::Constant::getNullValue(storage_type)); // is this needed?
   }
 
   void load_lexer_definition(const std::string source = "language.tex") {
