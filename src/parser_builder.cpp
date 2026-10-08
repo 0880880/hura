@@ -478,7 +478,7 @@ private:
     free_storage(builder, stack_alloca);
     free_storage(builder, nodes_alloca);
 
-    builder.CreateRet(llvm::ConstantPointerNull::get(ptr_type));
+    builder.CreateRet(llvm::Constant::getNullValue(storage_type));
 
     if (llvm::verifyFunction(*function, &llvm::errs())) {
       std::cerr << "Function verification failed!\n";
@@ -572,7 +572,7 @@ private:
       //       free_storage(builder, stack_alloca);
       //       free_storage(builder, nodes_alloca);
       //
-      //       builder.CreateRet(llvm::ConstantPointerNull::get(ptr_type));
+      //       builder.CreateRet(llvm::Constant::getNullValue(storage_type));
     }
 
     builder.SetInsertPoint(case_bb);
@@ -756,7 +756,7 @@ private:
       free_storage(builder, stack_alloca);
       free_storage(builder, nodes_alloca);
 
-      builder.CreateRet(llvm::ConstantPointerNull::get(ptr_type));
+      builder.CreateRet(llvm::Constant::getNullValue(storage_type));
     }
 
     builder.SetInsertPoint(states_data[idx].start_bb);
@@ -828,7 +828,7 @@ private:
       }
     }
     builder.CreateRet(
-        llvm::ConstantPointerNull::get(ptr_type)); // is this needed?
+        llvm::Constant::getNullValue(storage_type)); // is this needed?
   }
 
   void load_lexer_definition(const std::string source = "language.tex") {
