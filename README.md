@@ -1,9 +1,8 @@
 # ToDo
 
 - Connect lexer builder and parser builder
-   - Normalize token ID
-   - Build parser driver
-   - Build lexer parser driver from test input file
+   - Build lexer parser driver
+   - Integrate lexer parser code into build system
 - Design Language
 - Create CLI Utility
 - Type Checker
