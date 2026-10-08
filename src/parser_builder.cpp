@@ -620,11 +620,12 @@ private:
           "nodes.len");
       llvm::Value *idx = len;
       for (size_t i = 0; i < rules[rule_idx].pop_count; ++i) {
-        llvm::Value *peek = peek_storage(builder, node_type, nodes_alloca);
+        llvm::Value *peek = back_storage(builder, node_type, nodes_alloca);
         llvm::Value *subtree_size = builder.CreateLoad(
             i32_type,
             builder.CreateStructGEP(node_type, peek, 4, "peek.subtree.ptr"));
-        idx = builder.CreateSub(idx, subtree_size);
+        idx = builder.CreateSub(
+            idx, builder.CreateZExt(subtree_size, i64_type, "extend_subtree"));
       }
       llvm::Value *parent = llvm::UndefValue::get(node_type);
       parent = builder.CreateInsertValue(
