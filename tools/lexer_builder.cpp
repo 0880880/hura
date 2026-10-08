@@ -216,7 +216,7 @@ public:
     tokens.emplace_back(name, pat);
   }
 
-  void build() {
+  void build(const std::string out_header, std::string out_ir) {
     std::shared_ptr<State> root_start = std::make_unique<State>();
 
     priority.clear();
@@ -546,7 +546,7 @@ public:
     MPM.run(*module, MAM);
 
     std::error_code EC;
-    llvm::raw_fd_ostream dest("lexer.ll", EC);
+    llvm::raw_fd_ostream dest(out_ir, EC);
 
     if (EC) {
       llvm::errs() << "Could not open file: " << EC.message() << "\n";
@@ -555,7 +555,7 @@ public:
 
     module->print(dest, nullptr);
 
-    write_header();
+    write_header(out_header);
   }
 
 private:
@@ -577,8 +577,7 @@ private:
   std::map<int, DFAState> dfa;
   llvm::GlobalVariable *word_lookup_table;
 
-  void write_header() {
-    std::string filename = "include/lexer.h";
+  void write_header(std::string filename) {
 
     std::ofstream headerFile(filename);
 
@@ -910,9 +909,13 @@ static std::vector<std::string> split_by_string(const std::string &str,
   return tokens;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
 
-  std::ifstream file("language.lex");
+  if (argc != 4) {
+    exit(1);
+  }
+
+  std::ifstream file(argv[1]);
 
   if (!file.is_open()) {
     std::cerr << "Error: Could not open file." << std::endl;
@@ -941,5 +944,5 @@ int main() {
 
   file.close();
 
-  lb.build();
+  lb.build(argv[2], argv[3]);
 }

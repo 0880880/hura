@@ -8,19 +8,20 @@ project('hura', 'c', 'cpp',
   ])
 
 # ====================== VULKAN ======================
-vulkan_dep = dependency('vulkan', required : true)
+# Reserved for the future SPIR-V / multithreaded backend; not used yet.
+vulkan_dep = dependency('vulkan', required : false)
 
 llvm_modules = ['core']
 
 llvm_dep = dependency(
   'llvm',
-  version : '>=21.0', # Optional version requirement
+  version : '>=21.0',
   modules : llvm_modules,
-  static : false # Set to true if you want static linking
+  static : false,
 )
 
-executable('hura',
-  sources : ['src/parser_builder.cpp'],
-  include_directories : include_directories('include'),
-  dependencies : [llvm_dep],
-  install : true)
+# tools/ provides lp_dep (generated lexer/parser objects + headers)
+subdir('tools')
+
+# src/ provides the hura static library
+subdir('src')

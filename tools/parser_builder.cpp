@@ -250,8 +250,8 @@ private:
 
   std::map<size_t, llvm::BasicBlock *> reduce_bb_map;
 
-  std::unique_ptr<llvm::Module> mod;
   std::unique_ptr<llvm::LLVMContext> context;
+  std::unique_ptr<llvm::Module> mod;
   std::map<std::string, uint8_t> token_kind_map;
   llvm::Function *function;
   llvm::IntegerType *i1_type;
@@ -382,8 +382,7 @@ private:
     builder.CreateCall(free_fn, sp_ptr);
   }
 
-  void write_header() {
-    std::string filename = "include/parser.h";
+  void write_header(std::string filename) {
 
     std::ofstream headerFile(filename);
 
@@ -419,10 +418,10 @@ private:
     headerFile << "Nodes parse(uint8_t* tokens, size_t len);" << std::endl;
   }
 
-  void emit_ir() {
+  void emit_ir(std::string filename) {
     context = std::make_unique<llvm::LLVMContext>();
 
-    mod = std::make_unique<llvm::Module>("lexer", *context);
+    mod = std::make_unique<llvm::Module>("parser", *context);
 
     llvm::IRBuilder<> builder(*context);
 
@@ -524,7 +523,7 @@ private:
     MPM.run(*mod, MAM);
 
     std::error_code EC;
-    llvm::raw_fd_ostream dest("parser.ll", EC);
+    llvm::raw_fd_ostream dest(filename, EC);
 
     if (EC) {
       llvm::errs() << "Could not open file: " << EC.message() << "\n";
@@ -1146,7 +1145,7 @@ public:
     start = start + "_p";
   }
 
-  void build(bool LALR1 = true) {
+  void build(std::string out_header, std::string out_ir, bool LALR1 = true) {
     {
       bool changed = true;
       while (changed) {
@@ -1227,9 +1226,9 @@ public:
 
     create_GOTO();
 
-    emit_ir();
+    emit_ir(out_ir);
 
-    write_header();
+    write_header(out_header);
   }
 
   void write_mermaid(const std::string out = "parser.mmd") {
@@ -1515,65 +1514,22 @@ public:
   }
 };
 
-int main() {
+int main(int argc, char *argv[]) {
+
+  if (argc != 5 && argc != 6) {
+    exit(1);
+  }
 
   ParserBuilder pb;
 
-  pb.load("parser_test.lex", "language.grammar");
-
-  {
-    GrammarDefinition def;
-    def.from = "A";
-    def.g.push_back(Production::nonterminal("A"));
-    def.g.push_back(Production::nonterminal("B"));
-    def.g.push_back(Production::nonterminal("B"));
-    pb.add(def);
-  }
-  {
-    GrammarDefinition def;
-    def.from = "A";
-    def.g.push_back(Production::nonterminal("B"));
-    pb.add(def);
-  }
-  {
-    GrammarDefinition def;
-    def.from = "B";
-    def.g.push_back(Production::terminal(pb.map_token("1")));
-    def.g.push_back(Production::nonterminal("C"));
-    pb.add(def);
-  }
-  {
-    GrammarDefinition def;
-    def.from = "C";
-    def.g.push_back(Production::epsilon());
-    pb.add(def);
-  }
-  {
-    GrammarDefinition def;
-    def.from = "C";
-    def.g.push_back(Production::terminal(pb.map_token("0")));
-    def.g.push_back(Production::nonterminal("D"));
-    pb.add(def);
-  }
-  {
-    GrammarDefinition def;
-    def.from = "D";
-    def.g.push_back(Production::epsilon());
-    pb.add(def);
-  }
-  {
-    GrammarDefinition def;
-    def.from = "D";
-    def.g.push_back(Production::terminal(pb.map_token("0")));
-    pb.add(def);
-  }
+  pb.load(argv[1], argv[2]);
   pb.set_start("A");
   pb.augment();
-  pb.build();
+  pb.build(argv[3], argv[4], true);
 
-  pb.write_mermaid();
-
-  // pb.simulate({3, 2, 3, 3, 2, 2, TOKEN_KIND_EOF});
+  if (argc == 6) {
+    pb.write_mermaid(argv[5]);
+  }
 
   return 0;
 }
