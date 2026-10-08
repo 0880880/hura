@@ -578,7 +578,7 @@ private:
   llvm::GlobalVariable *word_lookup_table;
 
   void write_header() {
-    std::string filename = "lexer.h";
+    std::string filename = "include/lexer.h";
 
     std::ofstream headerFile(filename);
 

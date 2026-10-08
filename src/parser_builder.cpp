@@ -366,6 +366,43 @@ private:
     builder.CreateCall(free_fn, sp_ptr);
   }
 
+  void write_header() {
+    std::string filename = "include/parser.h";
+
+    std::ofstream headerFile(filename);
+
+    headerFile << "#include <stdint.h>" << std::endl;
+    headerFile << "#include \"base.h\"" << std::endl;
+
+    if (!headerFile.is_open()) {
+      std::cerr << "Error: Could not open file " << filename << std::endl;
+      return;
+    }
+
+    for (auto const &[k, v] : nonterminal_id_map) {
+      headerFile << "#define NONTERMINAL_ID_" << k << " " << static_cast<int>(v)
+                 << std::endl;
+    }
+
+    headerFile << std::endl
+               << "struct Node {" << std::endl
+               << "  uint8_t kind;" << std::endl
+               << "  uint8_t *start" << std::endl
+               << "  uint8_t *end" << std::endl
+               << "  uint8_t children_count" << std::endl
+               << "  uint32_t subtree_size" << std::endl
+               << "};" << std::endl;
+
+    headerFile << std::endl
+               << "struct Nodes {" << std::endl
+               << "  Node *nodes;" << std::endl
+               << "  size_t len" << std::endl
+               << "  size_t cap" << std::endl
+               << "};" << std::endl;
+
+    headerFile << "Nodes parse(uint8_t* tokens, size_t len);" << std::endl;
+  }
+
   void emit_ir() {
     context = std::make_unique<llvm::LLVMContext>();
 
@@ -404,7 +441,7 @@ private:
     std::vector<llvm::Type *> param_types = {ptr_type,
                                              i64_type}; // input tokens (i8*)
     llvm::FunctionType *func_type =
-        llvm::FunctionType::get(ptr_type, param_types, false);
+        llvm::FunctionType::get(storage_type, param_types, false);
 
     function = llvm::Function::Create(
         func_type, llvm::Function::ExternalLinkage, "parse", mod.get());
@@ -425,8 +462,6 @@ private:
 
     reserve_storage(builder, i32_type, stack_alloca, 100);
     reserve_storage(builder, node_type, nodes_alloca, 1000);
-
-    // I'll use allocas let mem2reg turn them into phis
 
     for (size_t i = 0; i < states.size(); ++i) {
       const DFAState &state = states[i];
@@ -951,6 +986,92 @@ private:
     }
   }
 
+  void lalr1() {
+    std::map<LALRKey, std::vector<size_t>> LALR1_groups;
+
+    for (size_t i = 0; i < states.size(); ++i) {
+      LALR1_groups[LALRKey{states[i]}].push_back(i);
+    }
+
+    std::vector<size_t> old_index_map(states.size());
+
+    std::deque<DFAState> LALR1_states;
+    std::deque<size_t> original_indices;
+    for (auto &[_, group] : LALR1_groups) {
+      if (group.empty()) {
+        continue;
+      }
+      const DFAState &first = states[group[0]];
+      DFAState lalr1 = {};
+      lalr1.kernel = first.kernel;
+      lalr1.closures = first.closures;
+      lalr1.transitions = first.transitions;
+      lalr1.worked_on = first.worked_on;
+      size_t original_index = states.size();
+
+      for (size_t state_idx : group) {
+        const DFAState &S = states[state_idx];
+        original_index = std::min(original_index, state_idx);
+        old_index_map[state_idx] = LALR1_states.size();
+
+        for (const auto &[sym, target_idx] : S.transitions) {
+          lalr1.transitions[sym] = target_idx;
+        }
+
+        for (LRItem k : S.kernel) {
+          auto it = std::find_if(
+              lalr1.kernel.begin(), lalr1.kernel.end(),
+              [&](const LRItem &item) { return item.lalr_equals(k); });
+          LRItem i = *it;
+          i.lookaheads.insert(k.lookaheads.begin(), k.lookaheads.end());
+          lalr1.kernel.erase(it);
+          lalr1.kernel.insert(i);
+        }
+        for (LRItem k : S.closures) {
+          auto it = std::find_if(
+              lalr1.closures.begin(), lalr1.closures.end(),
+              [&](const LRItem &item) { return item.lalr_equals(k); });
+          LRItem i = *it;
+          i.lookaheads.insert(k.lookaheads.begin(), k.lookaheads.end());
+          lalr1.closures.erase(it);
+          lalr1.closures.insert(i);
+        }
+      }
+      LALR1_states.push_back(lalr1);
+      original_indices.push_back(original_index);
+    }
+
+    std::vector<size_t> indices(LALR1_states.size());
+    std::iota(indices.begin(), indices.end(), 0);
+
+    std::sort(indices.begin(), indices.end(), [&](size_t i, size_t j) {
+      return original_indices[i] < original_indices[j];
+    });
+
+    std::vector<size_t> pre_to_final(LALR1_states.size());
+    for (size_t i = 0; i < indices.size(); ++i) {
+      pre_to_final[indices[i]] = i;
+    }
+
+    std::vector<size_t> old_to_final(states.size());
+    for (size_t i = 0; i < old_to_final.size(); ++i) {
+      old_to_final[i] = pre_to_final[old_index_map[i]];
+    }
+
+    std::deque<DFAState> sorted_LALR1(LALR1_states.size());
+    for (size_t i = 0; i < LALR1_states.size(); ++i) {
+      sorted_LALR1[i] = std::move(LALR1_states[indices[i]]);
+    }
+
+    states = std::move(sorted_LALR1);
+
+    for (DFAState &S : states) {
+      for (auto const &[p, i] : S.transitions) {
+        S.transitions[p] = old_to_final[i];
+      }
+    }
+  }
+
   size_t find_rule(const LRItem &item) {
     for (size_t i = 0; i < grammarDefinitions.size(); ++i) {
       const GrammarDefinition &def = grammarDefinitions[i];
@@ -1062,92 +1183,8 @@ public:
     }
 
     emit_ir();
-  }
 
-  void lalr1() {
-    std::map<LALRKey, std::vector<size_t>> LALR1_groups;
-
-    for (size_t i = 0; i < states.size(); ++i) {
-      LALR1_groups[LALRKey{states[i]}].push_back(i);
-    }
-
-    std::vector<size_t> old_index_map(states.size());
-
-    std::deque<DFAState> LALR1_states;
-    std::deque<size_t> original_indices;
-    for (auto &[_, group] : LALR1_groups) {
-      if (group.empty()) {
-        continue;
-      }
-      const DFAState &first = states[group[0]];
-      DFAState lalr1 = {};
-      lalr1.kernel = first.kernel;
-      lalr1.closures = first.closures;
-      lalr1.transitions = first.transitions;
-      lalr1.worked_on = first.worked_on;
-      size_t original_index = states.size();
-
-      for (size_t state_idx : group) {
-        const DFAState &S = states[state_idx];
-        original_index = std::min(original_index, state_idx);
-        old_index_map[state_idx] = LALR1_states.size();
-
-        for (const auto &[sym, target_idx] : S.transitions) {
-          lalr1.transitions[sym] = target_idx;
-        }
-
-        for (LRItem k : S.kernel) {
-          auto it = std::find_if(
-              lalr1.kernel.begin(), lalr1.kernel.end(),
-              [&](const LRItem &item) { return item.lalr_equals(k); });
-          LRItem i = *it;
-          i.lookaheads.insert(k.lookaheads.begin(), k.lookaheads.end());
-          lalr1.kernel.erase(it);
-          lalr1.kernel.insert(i);
-        }
-        for (LRItem k : S.closures) {
-          auto it = std::find_if(
-              lalr1.closures.begin(), lalr1.closures.end(),
-              [&](const LRItem &item) { return item.lalr_equals(k); });
-          LRItem i = *it;
-          i.lookaheads.insert(k.lookaheads.begin(), k.lookaheads.end());
-          lalr1.closures.erase(it);
-          lalr1.closures.insert(i);
-        }
-      }
-      LALR1_states.push_back(lalr1);
-      original_indices.push_back(original_index);
-    }
-
-    std::vector<size_t> indices(LALR1_states.size());
-    std::iota(indices.begin(), indices.end(), 0);
-
-    std::sort(indices.begin(), indices.end(), [&](size_t i, size_t j) {
-      return original_indices[i] < original_indices[j];
-    });
-
-    std::vector<size_t> pre_to_final(LALR1_states.size());
-    for (size_t i = 0; i < indices.size(); ++i) {
-      pre_to_final[indices[i]] = i;
-    }
-
-    std::vector<size_t> old_to_final(states.size());
-    for (size_t i = 0; i < old_to_final.size(); ++i) {
-      old_to_final[i] = pre_to_final[old_index_map[i]];
-    }
-
-    std::deque<DFAState> sorted_LALR1(LALR1_states.size());
-    for (size_t i = 0; i < LALR1_states.size(); ++i) {
-      sorted_LALR1[i] = std::move(LALR1_states[indices[i]]);
-    }
-
-    states = std::move(sorted_LALR1);
-
-    for (DFAState &S : states) {
-      for (auto const &[p, i] : S.transitions) {
-        S.transitions[p] = old_to_final[i];
-      }
-    }
+    write_header();
   }
 
   void write_mermaid(const std::string out = "parser.mmd") {

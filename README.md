@@ -1,6 +1,7 @@
 # ToDo
 
 - Connect lexer builder and parser builder
+   - Emit parser header
    - Build lexer parser driver
    - Integrate lexer parser code into build system
 - Design Language
