@@ -1229,10 +1229,10 @@ public:
         return;
       }
 
-      GrammarDefinition def{};
-      def.from = parts[0];
       std::vector<std::string> ors = split_by_string(parts[1], " | ");
       for (const std::string &s : ors) {
+        GrammarDefinition def{};
+        def.from = parts[0];
         std::vector<std::string> prods = split_by_string(s, " ");
         for (const std::string &p : prods) {
           if (s == "ε") {
@@ -1243,9 +1243,8 @@ public:
             def.g.push_back(Production::nonterminal(p));
           }
         }
+        add(def);
       }
-
-      add(def);
     }
 
     for (const GrammarDefinition &def : grammarDefinitions) {
