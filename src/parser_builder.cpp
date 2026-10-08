@@ -298,9 +298,9 @@ private:
     llvm::Value *should_realloc = builder.CreateICmpUGE(len, cap);
 
     llvm::BasicBlock *realloc_br =
-        llvm::BasicBlock::Create(*context, "realloc_br");
+        llvm::BasicBlock::Create(*context, "realloc_br", function);
     llvm::BasicBlock *resume_br =
-        llvm::BasicBlock::Create(*context, "resume_br");
+        llvm::BasicBlock::Create(*context, "resume_br", function);
 
     builder.CreateCondBr(should_realloc, realloc_br, resume_br);
 
