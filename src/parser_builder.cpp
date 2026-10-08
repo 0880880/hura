@@ -473,6 +473,8 @@ private:
       emit_state(i, state, builder);
     }
 
+    builder.SetInsertPoint(entry);
+
     free_storage(builder, stack_alloca);
     free_storage(builder, nodes_alloca);
 
