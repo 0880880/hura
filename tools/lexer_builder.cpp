@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
+#include <llvm/IR/Instructions.h>
 #include <map>
 #include <memory>
 #include <set>
@@ -27,6 +28,8 @@
 #include <llvm/Transforms/Scalar/JumpThreading.h>
 #include <llvm/Transforms/Scalar/SCCP.h>
 #include <llvm/Transforms/Scalar/SimplifyCFG.h>
+
+#include "base.h"
 
 struct TokenPattern {
   std::string name;
@@ -117,8 +120,10 @@ struct DFAState {
   bool is_accepting;
   bool is_word_boundary;
   std::string token_name;
+  llvm::BasicBlock *pre_start;
   llvm::BasicBlock *bb;
   llvm::BasicBlock *body_bb;
+  llvm::PHINode *ws_i_phi;
   llvm::PHINode *i_phi;
   llvm::Value *i_next;
 };
@@ -497,13 +502,7 @@ public:
       setup_state(s, builder);
     }
 
-    builder.SetInsertPoint(entry_bb);
-
-    DFAState &start_state = dfa.at(start_state_id);
-
-    start_state.i_phi->addIncoming(builder.getInt64(0), entry_bb);
-
-    builder.CreateBr(start_state.bb);
+    emit_ws_skip(entry_bb, dfa.at(start_state_id), builder);
 
     for (auto &[_, s] : dfa) {
       emit_state(s, builder);
@@ -566,8 +565,8 @@ private:
   llvm::BasicBlock *done;
   llvm::PHINode *done_phi;
   llvm::Type *i1_type;
-  llvm::Type *i8_type;
-  llvm::Type *i64_type;
+  llvm::IntegerType *i8_type;
+  llvm::IntegerType *i64_type;
   llvm::Value *f_input_ptr;
   llvm::Value *f_input_len;
   llvm::Value *f_out_start;
@@ -599,6 +598,50 @@ private:
                << std::endl;
   }
 
+  void emit_ws_skip(llvm::BasicBlock *entry_bb, DFAState &state,
+                    llvm::IRBuilder<> &builder) {
+    auto *pre_start = llvm::BasicBlock::Create(*context, "pre_start", function);
+    auto *pre_body = llvm::BasicBlock::Create(*context, "pre_body", function);
+    auto *skip_ws = llvm::BasicBlock::Create(*context, "skip_ws", function);
+    auto *to_start = llvm::BasicBlock::Create(*context, "to_start", function);
+    auto *pre_eof = llvm::BasicBlock::Create(*context, "pre_eof", function);
+
+    builder.SetInsertPoint(entry_bb);
+    builder.CreateBr(pre_start);
+
+    builder.SetInsertPoint(pre_start);
+    llvm::PHINode *ws_i = builder.CreatePHI(i64_type, 2, "ws_i");
+    ws_i->addIncoming(builder.getInt64(0), entry_bb);
+    llvm::Value *is_eof = builder.CreateICmpEQ(ws_i, f_input_len, "ws_is_eof");
+    builder.CreateCondBr(is_eof, pre_eof, pre_body);
+
+    builder.SetInsertPoint(pre_body);
+    llvm::Value *c_ptr = builder.CreateGEP(i8_type, f_input_ptr, ws_i);
+    llvm::Value *c = builder.CreateLoad(i8_type, c_ptr, "ws_c");
+    llvm::SwitchInst *sw = builder.CreateSwitch(c, to_start, 4);
+    sw->addCase(builder.getInt8(' '), skip_ws);
+    sw->addCase(builder.getInt8('\t'), skip_ws);
+    sw->addCase(builder.getInt8('\r'), skip_ws);
+    sw->addCase(builder.getInt8('\n'), skip_ws);
+
+    builder.SetInsertPoint(skip_ws);
+    ws_i->addIncoming(builder.CreateAdd(ws_i, builder.getInt64(1), "ws_i.next"),
+                      skip_ws);
+    builder.CreateBr(pre_start);
+
+    builder.SetInsertPoint(to_start);
+    builder.CreateStore(ws_i, f_out_start);
+    state.i_phi->addIncoming(ws_i, to_start);
+    builder.CreateBr(state.bb);
+
+    builder.SetInsertPoint(pre_eof);
+    builder.CreateStore(builder.getInt8(TOKEN_KIND_EOF), accepting_kind_alloc);
+    builder.CreateStore(ws_i, f_out_start);
+    builder.CreateStore(ws_i, f_out_end);
+    done_phi->addIncoming(ws_i, pre_eof);
+    builder.CreateBr(done);
+  }
+
   void setup_state(DFAState &state, llvm::IRBuilder<> &builder) {
     state.bb = llvm::BasicBlock::Create(
         *context, "state_start_" + std::to_string(state.id), function);
@@ -618,9 +661,9 @@ private:
 
       builder.CreateStore(builder.getInt8(token_kind_id), accepting_kind_alloc);
       builder.CreateStore(state.i_phi, f_out_end);
-    } else {
-      builder.CreateStore(state.i_phi, f_out_start);
-    }
+    } // } else {
+    //   builder.CreateStore(state.i_phi, f_out_start);
+    // }
 
     state.body_bb = llvm::BasicBlock::Create(
         *context, "state_" + std::to_string(state.id), function);
