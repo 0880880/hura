@@ -580,6 +580,7 @@ private:
 
     std::ofstream headerFile(filename);
 
+    headerFile << "#pragma once" << std::endl << std::endl;
     headerFile << "#include <stdint.h>" << std::endl;
     headerFile << "#include \"base.h\"" << std::endl;
 
