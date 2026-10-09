@@ -1,0 +1,2 @@
+option('vulkan', type: 'feature', value: 'disabled',
+       description: 'Build with Vulkan support')
