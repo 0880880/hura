@@ -4,6 +4,8 @@
   - Build lexer parser driver
   - Integrate lexer parser code into build system
 - Design Language
+- Common Compiler Context Class C4
+- File utility
 - Create CLI Utility
 - Type Checker
   - Surface type extraction (structs, function signatures)
