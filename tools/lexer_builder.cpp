@@ -594,9 +594,11 @@ private:
                  << std::endl;
     }
 
-    headerFile << "int8_t next_token(const uint8_t *text, size_t len, uint8_t "
-                  "*token_start, uint8_t *token_end);"
-               << std::endl;
+    headerFile
+        << "extern \"C\" int8_t next_token(const char_t *text, size_t "
+           "len, size_t "
+           "*token_start, size_t *token_end);"
+        << std::endl;
   }
 
   void emit_ws_skip(llvm::BasicBlock *entry_bb, DFAState &state,

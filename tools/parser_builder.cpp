@@ -416,7 +416,8 @@ private:
                << "  size_t cap;" << std::endl
                << "};" << std::endl;
 
-    headerFile << "Nodes parse(uint8_t* tokens, size_t len);" << std::endl;
+    headerFile << "extern \"C\" Nodes parse(uint8_t* tokens, size_t len);"
+               << std::endl;
   }
 
   void emit_ir(std::string filename) {
