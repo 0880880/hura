@@ -614,7 +614,8 @@ private:
       llvm::Value *len = builder.CreateLoad(
           i64_type, builder.CreateStructGEP(storage_type, nodes_alloca, 1),
           "nodes.len");
-      llvm::Value *idx = len;
+      llvm::Value *idx =
+          builder.CreateSub(len, llvm::ConstantInt::get(i64_type, 1));
       llvm::Value *sp = builder.CreateLoad(
           ptr_type, builder.CreateStructGEP(storage_type, nodes_alloca, 0));
       for (size_t i = 0; i < rules[rule_idx].pop_count; ++i) {
