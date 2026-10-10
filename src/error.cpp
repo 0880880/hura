@@ -8,13 +8,13 @@ void parser_throw(ParserErrorKind error_kind, size_t position,
   switch (error_kind) {
   case ParserErrorKind::_EOF:
     std::cout << "Expected \"" << "..." << "\" got EOF instead.";
-    return;
+    break;
   case ParserErrorKind::UNEXPECTED:
     std::cout << "Expected \"" << "..." << "\" got \"" << (int)offending_token
-              << "\" instead.";
-    return;
+              << "\" at " << position << " instead.";
+    break;
   case ParserErrorKind::OTHER:
     std::cout << "Internal parser error.";
-    return;
+    break;
   }
 }
