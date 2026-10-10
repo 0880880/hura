@@ -594,7 +594,7 @@ private:
                  << std::endl;
     }
 
-    headerFile << "extern \"C\" int8_t next_token(const char8_t *text, size_t "
+    headerFile << "extern \"C\" uint8_t next_token(const char8_t *text, size_t "
                   "len, size_t "
                   "*token_start, size_t *token_end);"
                << std::endl;
