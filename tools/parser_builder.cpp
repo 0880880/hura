@@ -620,8 +620,10 @@ private:
       llvm::Value *sp = builder.CreateLoad(
           ptr_type, builder.CreateStructGEP(storage_type, fn_param_out, 0));
       for (size_t i = 0; i < rules[rule_idx].pop_count; ++i) {
-        llvm::Value *child =
-            builder.CreateInBoundsGEP(node_type, sp, idx, "nodes.idx");
+        llvm::Value *child = builder.CreateInBoundsGEP(
+            node_type, sp,
+            builder.CreateAdd(idx, llvm::ConstantInt::get(i64_type, 1)),
+            "nodes.idx");
         llvm::Value *subtree_size = builder.CreateLoad(
             i32_type,
             builder.CreateStructGEP(node_type, child, 4, "peek.subtree.ptr"));
@@ -671,12 +673,7 @@ private:
           parent, llvm::ConstantInt::get(i8_type, rules[rule_idx].pop_count),
           3);
       parent = builder.CreateInsertValue(
-          parent,
-          builder.CreateTrunc(
-              builder.CreateSub(
-                  builder.CreateAdd(len, llvm::ConstantInt::get(i64_type, 1)),
-                  idx),
-              i32_type),
+          parent, builder.CreateTrunc(builder.CreateSub(len, idx), i32_type),
           4);
 
       push_storage(builder, node_type, fn_param_out, parent);
