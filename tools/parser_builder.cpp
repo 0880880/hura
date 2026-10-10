@@ -416,7 +416,8 @@ private:
                << "  size_t cap;" << std::endl
                << "};" << std::endl;
 
-    headerFile << "extern \"C\" void parse(Nodes *out_nodes, uint8_t* tokens, "
+    headerFile << "extern \"C\" [[noreturn]] void parse(Nodes *out_nodes, "
+                  "uint8_t* tokens, "
                   "size_t len);"
                << std::endl;
   }
