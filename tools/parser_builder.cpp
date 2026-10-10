@@ -379,7 +379,7 @@ private:
         mod->getOrInsertFunction("free", void_type, ptr_type);
     llvm::Value *sp_ptr =
         builder.CreateStructGEP(storage_type, storage, 0, "get_ptr");
-    builder.CreateCall(free_fn, sp_ptr);
+    builder.CreateCall(free_fn, builder.CreateLoad(ptr_type, sp_ptr));
   }
 
   void write_header(std::string filename) {
