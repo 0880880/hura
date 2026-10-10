@@ -496,7 +496,7 @@ private:
 
     if (llvm::verifyFunction(*function, &llvm::errs())) {
       std::cerr << "Function verification failed!\n";
-      return;
+      exit(1);
     }
 
     llvm::LoopAnalysisManager LAM;

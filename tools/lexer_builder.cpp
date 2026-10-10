@@ -516,6 +516,7 @@ public:
 
     if (llvm::verifyFunction(*function, &llvm::errs())) {
       std::cerr << "Function verification failed!\n";
+      exit(1);
       return;
     }
 
