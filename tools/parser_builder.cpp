@@ -264,9 +264,9 @@ private:
   llvm::StructType *storage_type;
 
   llvm::Value *stack_alloca;
-  llvm::Value *nodes_alloca;
   llvm::Value *i_alloca;
 
+  llvm::Value *fn_param_out;
   llvm::Value *fn_param_tokens;
   llvm::Value *fn_param_len;
 
@@ -416,7 +416,8 @@ private:
                << "  size_t cap;" << std::endl
                << "};" << std::endl;
 
-    headerFile << "extern \"C\" Nodes parse(uint8_t* tokens, size_t len);"
+    headerFile << "extern \"C\" void parse(Nodes *out_nodes, uint8_t* tokens, "
+                  "size_t len);"
                << std::endl;
   }
 
@@ -455,10 +456,10 @@ private:
     storage_type = llvm::StructType::create(*context, "Stack");
     storage_type->setBody(storage_body);
 
-    std::vector<llvm::Type *> param_types = {ptr_type,
+    std::vector<llvm::Type *> param_types = {ptr_type, ptr_type,
                                              i64_type}; // input tokens (i8*)
     llvm::FunctionType *func_type =
-        llvm::FunctionType::get(storage_type, param_types, false);
+        llvm::FunctionType::get(void_type, param_types, false);
 
     function = llvm::Function::Create(
         func_type, llvm::Function::ExternalLinkage, "parse", mod.get());
@@ -466,33 +467,33 @@ private:
     llvm::BasicBlock *entry =
         llvm::BasicBlock::Create(*context, "entry", function);
 
-    builder.SetInsertPoint(entry);
-
-    fn_param_tokens = function->getArg(0);
-    fn_param_len = function->getArg(1);
-
-    stack_alloca = builder.CreateAlloca(storage_type);
-    nodes_alloca = builder.CreateAlloca(storage_type);
-
-    i_alloca = builder.CreateAlloca(i64_type);
-    builder.CreateStore(llvm::ConstantInt::get(i64_type, 0), i_alloca);
-
-    reserve_storage(builder, i32_type, stack_alloca, 100);
-    reserve_storage(builder, node_type, nodes_alloca, 1000);
-
     for (size_t i = 0; i < states.size(); ++i) {
       const DFAState &state = states[i];
       setup_state(i, state, builder);
     }
 
+    builder.SetInsertPoint(entry);
+
+    fn_param_out = function->getArg(0);
+    fn_param_tokens = function->getArg(1);
+    fn_param_len = function->getArg(2);
+
+    stack_alloca = builder.CreateAlloca(storage_type);
+
+    i_alloca = builder.CreateAlloca(i64_type);
+    builder.CreateStore(llvm::ConstantInt::get(i64_type, 0), i_alloca);
+
+    reserve_storage(builder, i32_type, stack_alloca, 100);
+    reserve_storage(builder, node_type, fn_param_out, 1000);
+    push_storage(builder, i32_type, stack_alloca,
+                 llvm::ConstantInt::get(i32_type, 0));
+
+    builder.CreateBr(states_data[0].start_bb);
+
     for (size_t i = 0; i < states.size(); ++i) {
       const DFAState &state = states[i];
       emit_state(i, state, builder);
     }
-
-    builder.SetInsertPoint(entry);
-
-    builder.CreateBr(states_data[0].start_bb);
 
     if (llvm::verifyFunction(*function, &llvm::errs())) {
       std::cerr << "Function verification failed!\n";
@@ -612,12 +613,12 @@ private:
 
     {
       llvm::Value *len = builder.CreateLoad(
-          i64_type, builder.CreateStructGEP(storage_type, nodes_alloca, 1),
+          i64_type, builder.CreateStructGEP(storage_type, fn_param_out, 1),
           "nodes.len");
       llvm::Value *idx =
           builder.CreateSub(len, llvm::ConstantInt::get(i64_type, 1));
       llvm::Value *sp = builder.CreateLoad(
-          ptr_type, builder.CreateStructGEP(storage_type, nodes_alloca, 0));
+          ptr_type, builder.CreateStructGEP(storage_type, fn_param_out, 0));
       for (size_t i = 0; i < rules[rule_idx].pop_count; ++i) {
         llvm::Value *child =
             builder.CreateInBoundsGEP(node_type, sp, idx, "nodes.idx");
@@ -644,7 +645,7 @@ private:
                                       builder.CreateLoad(
                                           ptr_type, builder.CreateStructGEP(
                                                         storage_type,
-                                                        nodes_alloca, 0, "")),
+                                                        fn_param_out, 0, "")),
                                       idx),
                                   1, "nodes[idx].start")))
               : (kind_ptr),
@@ -660,7 +661,7 @@ private:
                             node_type,
                             builder.CreateLoad(
                                 ptr_type, builder.CreateStructGEP(
-                                              storage_type, nodes_alloca, 0)),
+                                              storage_type, fn_param_out, 0)),
                             builder.CreateSub(
                                 len, llvm::ConstantInt::get(i64_type, 1))),
                         2, "nodes[len-1].end")))
@@ -678,7 +679,7 @@ private:
               i32_type),
           4);
 
-      push_storage(builder, node_type, nodes_alloca, parent);
+      push_storage(builder, node_type, fn_param_out, parent);
     }
 
     llvm::SwitchInst *goto_sw =
@@ -784,9 +785,10 @@ private:
            llvm::ConstantInt::get(i64_type, state.transitions.size())});
 
       free_storage(builder, stack_alloca);
-      free_storage(builder, nodes_alloca);
-
-      builder.CreateRet(llvm::Constant::getNullValue(storage_type));
+      free_storage(builder, fn_param_out);
+      builder.CreateStore(llvm::Constant::getNullValue(storage_type),
+                          fn_param_out);
+      builder.CreateRetVoid();
     }
 
     builder.SetInsertPoint(states_data[idx].start_bb);
@@ -823,7 +825,7 @@ private:
       node =
           builder.CreateInsertValue(node, llvm::ConstantInt::get(i32_type, 1),
                                     4, "node.insert.subtree_size");
-      push_storage(builder, node_type, nodes_alloca, node);
+      push_storage(builder, node_type, fn_param_out, node);
       builder.CreateBr(states_data[v].start_bb);
       sw->addCase(llvm::ConstantInt::get(i8_type, k.token_kind, false, true),
                   case_bb);
@@ -849,7 +851,7 @@ private:
               llvm::BasicBlock::Create(*context, "case_accept", function);
           builder.SetInsertPoint(case_bb);
 
-          builder.CreateRet(builder.CreateLoad(storage_type, nodes_alloca));
+          builder.CreateRetVoid();
 
           sw->addCase(
               llvm::ConstantInt::get(i8_type, TOKEN_KIND_EOF, false, true),
