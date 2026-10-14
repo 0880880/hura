@@ -5,11 +5,11 @@
   - Thread local file handling and next file choosing
 - Multithreaded setup (execution and barriers)
 - Create compile pipeline based on specs/hura.md
+  - Type Checker
+    - Surface type extraction (structs, function signatures)
+    - Parallelizable function body type checking
 - File utility
 - Create CLI Utility
-- Type Checker
-  - Surface type extraction (structs, function signatures)
-  - Parallelizable function body type checking
 - Testing!
 - Error handling
 - Multithreaded backend
