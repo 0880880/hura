@@ -237,10 +237,9 @@ public main() -> i32 fails{MATHERR} {
 
 - Lexer
 - Parser
+- Barrier
 - Symbol extraction and generic extraction internal representation
-- Barrier
 - Type checking
-- Barrier
 - IR codegen
 - Exporting symbols, version, name, hash, generics into .hmeta inside object files using memory dump
 - Import back with mmap
