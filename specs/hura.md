@@ -40,6 +40,13 @@
   - Can only interact with through `const` functions and variables
   - `&x` -> `T*` and `T*` ->? `T&` (one way)
 
+### Casts
+
+- `cast` Conversion of compatible types: int->float, T*->void*, in->im (m>n)
+- `trunc` Conversion of decimal values by shortening: float->int, in->im or fn->fm (n>m)
+- `bitcast` Convert representation of something (size checked)
+- `ptrcast` Unchecked T*->U* cast
+
 ### Internal
 
 ```cpp
