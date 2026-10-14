@@ -1,7 +1,8 @@
 #pragma once
 
-#include <stdint.h>
 #include "base.h"
+#include <stdint.h>
+
 #define NONTERMINAL_ID_A 0
 #define NONTERMINAL_ID_A_p 4
 #define NONTERMINAL_ID_B 1
@@ -21,4 +22,4 @@ struct Nodes {
   size_t len;
   size_t cap;
 };
-extern "C" [[noreturn]] void parse(Nodes *out_nodes, uint8_t* tokens, size_t len);
+extern "C" void parse(Nodes *out_nodes, uint8_t *tokens, size_t len);
