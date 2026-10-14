@@ -1,10 +1,10 @@
 # ToDo
 
-- Connect lexer builder and parser builder
-  - Build lexer parser driver
-  - Integrate lexer parser code into build system
-- Design Language
-- Common Compiler Context Class C4
+- Common Compiler Context Class (C4)
+  - File loading
+  - Thread local file handling and next file choosing
+- Multithreaded setup (execution and barriers)
+- Create compile pipeline based on specs/hura.md
 - File utility
 - Create CLI Utility
 - Type Checker
