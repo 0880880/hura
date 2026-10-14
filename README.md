@@ -11,8 +11,7 @@
   - Surface type extraction (structs, function signatures)
   - Parallelizable function body type checking
 - Testing!
-- Pipeline building
 - Error handling
-- Compiling for SPIR-V backend
-- Vulkan and Multithreaded backend
+- Multithreaded backend
 - Code generation Write TODO
+- Vulkan backend?
