@@ -236,7 +236,6 @@ public main() -> i32 fails{MATHERR} {
 ## Compiler Stages
 
 - Lexer
-- Barrier
 - Parser
 - Symbol extraction and generic extraction internal representation
 - Barrier
