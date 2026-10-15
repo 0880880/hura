@@ -91,8 +91,12 @@ app_sources = files(
   'src/main.cpp',
 )
 
-app_deps = [proj_dep, llvm_inc_link]
+app_deps = [proj_dep, llvm_inc_link, dependency('mio')]
 app_args = llvm_args
+
+if host_machine.system() == 'windows'
+  app_deps += dependency('nowide')
+endif
 
 if vulkan_dep.found()
   app_deps += vulkan_dep

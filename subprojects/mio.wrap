@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/vimpunk/mio.git
+revision = master
+patch_directory = mio
+
+[provide]
+dependency_names = mio
