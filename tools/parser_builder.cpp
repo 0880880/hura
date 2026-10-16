@@ -403,7 +403,7 @@ private:
     header_file << "static const char *nonterminal_name(uint8_t kind) {\n";
     header_file << "switch(kind) {\n";
     for (auto const &[k, v] : nonterminal_id_map) {
-      header_file << "case " << v << ": return "
+      header_file << "case " << static_cast<int>(v) << ": return "
                   << "\"" << k << "\";" << std::endl;
     }
     header_file << "default: \"?\";" << std::endl;

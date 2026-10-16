@@ -600,8 +600,8 @@ private:
     header_file << "static const char *token_name(uint8_t kind) {\n"
                 << "switch(kind) {\n";
     for (auto const &[k, v] : token_kind_map) {
-      header_file << "case " << v << ": return " << "\"" << k << "\";"
-                  << std::endl;
+      header_file << "case " << static_cast<int>(v) << ": return " << "\"" << k
+                  << "\";" << std::endl;
     }
     header_file << "default: \"?\";" << std::endl;
     header_file << "}\n";
