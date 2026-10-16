@@ -964,9 +964,15 @@ private:
   std::set<Production> FIRST(std::vector<Production> productions) {
     std::set<Production> result;
     for (const Production &p : productions) {
-      const std::set<Production> &pf = first_table[std::vector<Production>{p}];
+      if (p.is_terminal) {
+        result.insert(p);
+        return result;
+      }
+      if (p.is_epsilon) {
+        continue;
+      }
       bool has_epsilon = false;
-      for (const Production &op : pf) {
+      for (const Production &op : first_table[std::vector<Production>{p}]) {
         if (op.is_epsilon) {
           has_epsilon = true;
           continue;
