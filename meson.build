@@ -57,28 +57,25 @@ parser_builder = executable(
   native: true,
 )
 
-gen_header_dir = meson.project_source_root() / 'include'
-
 lexer_gen = custom_target(
   'lexer_gen',
   input: 'specs/lexer.def',
-  output: 'lexer.ll',
-  command: [lexer_builder, '@INPUT@', gen_header_dir / 'lexer.h', '@OUTPUT@'],
-  depend_files: files('include/base.h'),
+  output: ['lexer.ll', 'lexer.h'],
+  command: [lexer_builder, '@INPUT@', '@OUTPUT1@', '@OUTPUT0@'],
 )
 
 parser_gen = custom_target(
   'parser_gen',
   input: ['specs/lexer.def', 'specs/parser.def'],
-  output: 'parser.ll',
+  output: ['parser.ll', 'parser.h'],
   command: [
     parser_builder,
     '@INPUT0@',
     '@INPUT1@',
-    gen_header_dir / 'parser.h',
-    '@OUTPUT@',
+    '@OUTPUT1@',
+    '@OUTPUT0@',
   ],
-  depend_files: files('include/base.h', 'include/error.hpp', 'src/error.cpp'),
+  depend_files: files('include/error.hpp'),
 )
 
 proj_dep = declare_dependency(
