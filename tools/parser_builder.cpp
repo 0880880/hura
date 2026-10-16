@@ -395,16 +395,20 @@ private:
       return;
     }
 
-    for (auto const &[k, v] : nonterminal_id_map) {
-      header_file << "#define NONTERMINAL_ID_" << k << " "
-                  << static_cast<int>(v) << std::endl;
+    for (auto const &[name, id] : nonterminal_id_map) {
+      header_file << "#define NONTERMINAL_ID_" << name << " "
+                  << (static_cast<int>(id) + 128) << std::endl;
     }
 
-    header_file << "static const char *nonterminal_name(uint8_t kind) {\n";
+    header_file << "static const char *kind_name(uint8_t kind) {\n";
     header_file << "switch(kind) {\n";
-    for (auto const &[k, v] : nonterminal_id_map) {
-      header_file << "case " << static_cast<int>(v) << ": return "
-                  << "\"" << k << "\";" << std::endl;
+    for (auto const &[name, id] : nonterminal_id_map) {
+      header_file << "case " << (static_cast<int>(id) + 128) << ": return "
+                  << "\"" << name << "\";" << std::endl;
+    }
+    for (auto const &[id, token_name] : id_token_map) {
+      header_file << "case " << static_cast<int>(id) << ": return "
+                  << "\"" << token_name << "\";" << std::endl;
     }
     header_file << "default: return \"?\";" << std::endl;
     header_file << "}\n";
