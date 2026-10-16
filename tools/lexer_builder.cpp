@@ -579,26 +579,38 @@ private:
 
   void write_header(std::string filename) {
 
-    std::ofstream headerFile(filename);
+    std::ofstream header_file(filename);
 
-    headerFile << "#pragma once" << std::endl << std::endl;
-    headerFile << "#include <stdint.h>" << std::endl;
-    headerFile << "#include \"base.h\"" << std::endl;
+    header_file << "#pragma once" << std::endl << std::endl;
+    header_file << "#include <stdint.h>" << std::endl;
+    header_file << "#include \"base.h\"" << std::endl;
 
-    if (!headerFile.is_open()) {
+    if (!header_file.is_open()) {
       std::cerr << "Error: Could not open file " << filename << std::endl;
       return;
     }
 
     for (auto const &[k, v] : token_kind_map) {
-      headerFile << "#define TOKEN_KIND_" << k << " " << static_cast<int>(v)
-                 << std::endl;
+      header_file << "#define TOKEN_KIND_" << k << " " << static_cast<int>(v)
+                  << std::endl;
     }
 
-    headerFile << "extern \"C\" uint8_t next_token(const char8_t *text, size_t "
-                  "len, size_t "
-                  "*token_start, size_t *token_end);"
-               << std::endl;
+    header_file << "\n";
+
+    header_file << "static const char *token_name(uint8_t kind) {\n"
+                << "switch(kind) {\n";
+    for (auto const &[k, v] : token_kind_map) {
+      header_file << "case " << v << ": return " << "\"" << k << "\";"
+                  << std::endl;
+    }
+    header_file << "default: '?';" << std::endl;
+    header_file << "}\n";
+    header_file << "}\n\n";
+
+    header_file << "extern \"C\" uint8_t next_token(const char *text, size_t "
+                   "len, size_t "
+                   "*token_start, size_t *token_end);"
+                << std::endl;
   }
 
   void emit_ws_skip(llvm::BasicBlock *entry_bb, DFAState &state,
