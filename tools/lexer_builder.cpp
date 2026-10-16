@@ -865,13 +865,26 @@ private:
       return n;
     } else if (cursor == '[') {
       ++cursor;
+      bool negate = cursor == '^';
+      if (negate) {
+        ++cursor;
+      }
       std::shared_ptr<Set> n = std::make_unique<Set>();
       char from = 0;
       bool range = false, escaped = false;
       while (!cursor.eof() && cursor != ']') {
         if (range && from != 0) {
-          for (char ch = from; ch <= cursor.get(); ++ch) {
-            n->chars.insert(ch);
+          if (negate) {
+            for (char ch = '\0'; ch < from; ++ch) {
+              n->chars.insert(ch);
+            }
+            for (char ch = cursor.get() + 1; ch <= '\255'; ++ch) {
+              n->chars.insert(ch);
+            }
+          } else {
+            for (char ch = from; ch <= cursor.get(); ++ch) {
+              n->chars.insert(ch);
+            }
           }
           from = 0;
           range = false;
