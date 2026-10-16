@@ -869,10 +869,11 @@ private:
       bool range = false, escaped = false;
       while (!cursor.eof() && cursor != ']') {
         if (range && from != 0) {
-          for (char ch = from; ch < cursor.get(); ++ch) {
+          for (char ch = from; ch <= cursor.get(); ++ch) {
             n->chars.insert(ch);
           }
           from = 0;
+          range = false;
         } else if (cursor == '\\') {
           if (escaped) {
             escaped = false;
