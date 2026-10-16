@@ -607,6 +607,7 @@ private:
       header_file << "case " << static_cast<int>(v) << ": return " << "\"" << k
                   << "\";" << std::endl;
     }
+    header_file << "case 1: return \"EOF\";" << std::endl;
     header_file << "default: return \"?\";" << std::endl;
     header_file << "}\n";
     header_file << "}\n\n";
