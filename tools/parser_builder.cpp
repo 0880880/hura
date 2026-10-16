@@ -384,42 +384,50 @@ private:
 
   void write_header(std::string filename) {
 
-    std::ofstream headerFile(filename);
+    std::ofstream header_file(filename);
 
-    headerFile << "#pragma once" << std::endl << std::endl;
-    headerFile << "#include <stdint.h>" << std::endl;
-    headerFile << "#include \"base.h\"" << std::endl;
+    header_file << "#pragma once" << std::endl << std::endl;
+    header_file << "#include <stdint.h>" << std::endl;
+    header_file << "#include \"lexer.h\"" << std::endl;
 
-    if (!headerFile.is_open()) {
+    if (!header_file.is_open()) {
       std::cerr << "Error: Could not open file " << filename << std::endl;
       return;
     }
 
     for (auto const &[k, v] : nonterminal_id_map) {
-      headerFile << "#define NONTERMINAL_ID_" << k << " " << static_cast<int>(v)
-                 << std::endl;
+      header_file << "#define NONTERMINAL_ID_" << k << " "
+                  << static_cast<int>(v) << std::endl;
     }
 
-    headerFile << std::endl
-               << "struct Node {" << std::endl
-               << "  uint8_t kind;" << std::endl
-               << "  uint8_t *start;" << std::endl
-               << "  uint8_t *end;" << std::endl
-               << "  uint8_t children_count;" << std::endl
-               << "  uint32_t subtree_size;" << std::endl
-               << "};" << std::endl;
+    header_file << "switch const char *nonterminal_name(uint8_t kind) {\n";
+    for (auto const &[k, v] : nonterminal_id_map) {
+      header_file << "case " << v << ": return "
+                  << "\"" << k << "\";" << std::endl;
+    }
+    header_file << "default: " << "return token_name(kind);" << std::endl;
+    header_file << "}\n\n";
 
-    headerFile << std::endl
-               << "struct Nodes {" << std::endl
-               << "  Node *nodes;" << std::endl
-               << "  size_t len;" << std::endl
-               << "  size_t cap;" << std::endl
-               << "};" << std::endl;
+    header_file << std::endl
+                << "struct Node {" << std::endl
+                << "  uint8_t kind;" << std::endl
+                << "  uint8_t *start;" << std::endl
+                << "  uint8_t *end;" << std::endl
+                << "  uint8_t children_count;" << std::endl
+                << "  uint32_t subtree_size;" << std::endl
+                << "};" << std::endl;
 
-    headerFile << "extern \"C\" void parse(Nodes *out_nodes, "
-                  "uint8_t* tokens, "
-                  "size_t len);"
-               << std::endl;
+    header_file << std::endl
+                << "struct Nodes {" << std::endl
+                << "  Node *nodes;" << std::endl
+                << "  size_t len;" << std::endl
+                << "  size_t cap;" << std::endl
+                << "};" << std::endl;
+
+    header_file << "extern \"C\" void parse(Nodes *out_nodes, "
+                   "uint8_t* tokens, "
+                   "size_t len);"
+                << std::endl;
   }
 
   void emit_ir(std::string filename) {
