@@ -603,7 +603,7 @@ private:
       header_file << "case " << static_cast<int>(v) << ": return " << "\"" << k
                   << "\";" << std::endl;
     }
-    header_file << "default: \"?\";" << std::endl;
+    header_file << "default: return \"?\";" << std::endl;
     header_file << "}\n";
     header_file << "}\n\n";
 
