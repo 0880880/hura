@@ -653,16 +653,18 @@ private:
           parent,
           rules[rule_idx].pop_count > 0
               ? (builder.CreateLoad(
-                    ptr_type, builder.CreateStructGEP(
-                                  node_type,
-                                  builder.CreateInBoundsGEP(
-                                      node_type,
-                                      builder.CreateLoad(
-                                          ptr_type, builder.CreateStructGEP(
-                                                        storage_type,
+                    ptr_type,
+                    builder.CreateStructGEP(
+                        node_type,
+                        builder.CreateInBoundsGEP(
+                            node_type,
+                            builder.CreateLoad(
+                                ptr_type,
+                                builder.CreateStructGEP(storage_type,
                                                         fn_param_out, 0, "")),
-                                      idx),
-                                  1, "nodes[idx].start")))
+                            builder.CreateAdd(
+                                idx, llvm::ConstantInt::get(i64_type, 1))),
+                        1, "nodes[idx].start")))
               : (kind_ptr),
           1);
       parent = builder.CreateInsertValue(
