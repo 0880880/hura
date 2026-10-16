@@ -436,6 +436,10 @@ public:
       }
     }
 
+    for (size_t i = 0; i < priority.size(); ++i) {
+      token_kind_map[priority[i]] = i + USER_TOKEN_OFFSET;
+    }
+
     context = std::make_unique<llvm::LLVMContext>();
 
     std::unique_ptr<llvm::Module> module =
@@ -667,12 +671,7 @@ private:
         builder.CreatePHI(i64_type, 0, "i.state_" + std::to_string(state.id));
 
     if (state.is_accepting) {
-      uint8_t token_kind_id = token_kind_map.size() + USER_TOKEN_OFFSET;
-      if (token_kind_map.contains(state.token_name)) {
-        token_kind_id = token_kind_map[state.token_name];
-      } else {
-        token_kind_map[state.token_name] = token_kind_id;
-      }
+      uint8_t token_kind_id = token_kind_map[state.token_name];
 
       builder.CreateStore(builder.getInt8(token_kind_id), accepting_kind_alloc);
       builder.CreateStore(state.i_phi, f_out_end);
