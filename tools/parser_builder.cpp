@@ -1312,6 +1312,8 @@ public:
       }
     }
 
+    set_start(grammarDefinitions[0].from);
+
     for (const GrammarDefinition &def : grammarDefinitions) {
       for (const Production &p : def.g) {
         if (p.is_terminal || p.is_epsilon) {
@@ -1540,7 +1542,6 @@ int main(int argc, char *argv[]) {
   ParserBuilder pb;
 
   pb.load(argv[1], argv[2]);
-  pb.set_start("A");
   pb.augment();
   pb.build(argv[3], argv[4], true);
 
