@@ -311,7 +311,7 @@ public:
 
     int start_state_id = 0;
 
-    bool optimize = true;
+    bool optimize = false;
     if (optimize) { // Hopcroft
       std::map<StateDetails, std::set<int>> partition_labels = {};
       std::set<std::set<int>> partitions = {};
