@@ -35,6 +35,7 @@ XOR: ^
 EXCL: !
 QUESTION: \?
 DOT: \.
+DOTS: \.\.\.
 COMMA: ,
 LSHIFT: <<
 RSHIFT: >>
