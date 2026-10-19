@@ -20,6 +20,7 @@ CATCH: catch
 IMPORT: import
 BLOCK: block
 CONTINUE: continue
+BREAK: break
 DEFER: defer
 COMPTIME: comptime
 FLOW: flow
