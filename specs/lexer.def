@@ -22,6 +22,7 @@ BLOCK: block
 CONTINUE: continue
 DEFER: defer
 COMPTIME: comptime
+FLOW: flow
 
 PLUS: \+
 MINUS: -
@@ -61,10 +62,13 @@ ADDAS: \+=
 SUBAS: -=
 MULAS: \*=
 DIVAS: /=
+MODAS: %=
 FLIPAS: ~=
 XORAS: ^=
 ORAS: \|=
 ANDAS: &=
+LSHAS: >>=
+RSHAS: <<=
 
 GTE: >=
 LTE: <=
