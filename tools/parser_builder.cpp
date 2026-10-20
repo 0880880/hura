@@ -337,7 +337,7 @@ private:
     sp = builder.CreateLoad(ptr_type, sp_ptr);
 
     llvm::Value *back_ptr =
-        builder.CreateGEP(inner_type, sp, len, "storage_back");
+        builder.CreateInBoundsGEP(inner_type, sp, len, "storage_back");
     builder.CreateStore(val, back_ptr);
 
     llvm::Value *new_len =
@@ -590,7 +590,7 @@ private:
       //
       //       llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
       //
-      //       llvm::Value *kind_ptr = builder.CreateGEP(i8_type,
+      //       llvm::Value *kind_ptr = builder.CreateInBoundsGEP(i8_type,
       //       fn_param_tokens, i); llvm::Value *kind =
       //       builder.CreateLoad(i8_type, kind_ptr);
       //
@@ -624,7 +624,8 @@ private:
 
     llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
 
-    llvm::Value *kind_ptr = builder.CreateGEP(i8_type, fn_param_tokens, i);
+    llvm::Value *kind_ptr =
+        builder.CreateInBoundsGEP(i8_type, fn_param_tokens, i);
 
     {
       llvm::Value *len = builder.CreateLoad(
@@ -731,7 +732,8 @@ private:
 
     llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
 
-    llvm::Value *kind_ptr = builder.CreateGEP(i8_type, fn_param_tokens, i);
+    llvm::Value *kind_ptr =
+        builder.CreateInBoundsGEP(i8_type, fn_param_tokens, i);
     llvm::Value *kind = builder.CreateLoad(i8_type, kind_ptr);
 
     int num_cases = 0;
@@ -786,7 +788,8 @@ private:
 
       llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
 
-      llvm::Value *kind_ptr = builder.CreateGEP(i8_type, fn_param_tokens, i);
+      llvm::Value *kind_ptr =
+          builder.CreateInBoundsGEP(i8_type, fn_param_tokens, i);
       llvm::Value *kind = builder.CreateLoad(i8_type, kind_ptr);
 
       builder.CreateCall(
@@ -830,8 +833,8 @@ private:
           "node.insert.kind");
       node = builder.CreateInsertValue(node, kind_ptr, 1, "node.insert.start");
       node = builder.CreateInsertValue(
-          node, builder.CreateGEP(i8_type, fn_param_tokens, increment), 2,
-          "node.insert.end");
+          node, builder.CreateInBoundsGEP(i8_type, fn_param_tokens, increment),
+          2, "node.insert.end");
       node = builder.CreateInsertValue(node, llvm::ConstantInt::get(i8_type, 0),
                                        3, "node.insert.children_count");
       node =

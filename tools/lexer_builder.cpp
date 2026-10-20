@@ -642,7 +642,7 @@ private:
     builder.CreateCondBr(is_eof, pre_eof, pre_body);
 
     builder.SetInsertPoint(pre_body);
-    llvm::Value *c_ptr = builder.CreateGEP(i8_type, f_input_ptr, ws_i);
+    llvm::Value *c_ptr = builder.CreateInBoundsGEP(i8_type, f_input_ptr, ws_i);
     llvm::Value *c = builder.CreateLoad(i8_type, c_ptr, "ws_c");
     llvm::SwitchInst *sw = builder.CreateSwitch(c, to_start, 4);
     sw->addCase(builder.getInt8(' '), skip_ws);
@@ -698,11 +698,12 @@ private:
   void emit_state(DFAState &state, llvm::IRBuilder<> &builder) {
     builder.SetInsertPoint(state.body_bb);
 
-    llvm::Value *c_ptr = builder.CreateGEP(i8_type, f_input_ptr, state.i_phi);
+    llvm::Value *c_ptr =
+        builder.CreateInBoundsGEP(i8_type, f_input_ptr, state.i_phi);
     llvm::Value *c = builder.CreateLoad(i8_type, c_ptr, "c");
 
-    llvm::Value *is_c_word =
-        builder.CreateGEP(i1_type, word_lookup_table, c, "is_c_word_ptr");
+    llvm::Value *is_c_word = builder.CreateInBoundsGEP(
+        i1_type, word_lookup_table, c, "is_c_word_ptr");
 
     is_c_word = builder.CreateLoad(i1_type, is_c_word, "is_c_word");
 
