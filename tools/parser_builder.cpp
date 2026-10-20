@@ -877,7 +877,10 @@ private:
         if (!inserted) {
           if (it->second != rule) {
             throw std::runtime_error("reduce/reduce conflict in state " +
-                                     std::to_string(idx));
+                                     std::to_string(idx) + " " +
+                                     states[idx].to_string([this](uint8_t id) {
+                                       return this->map_id(id);
+                                     }));
           }
           continue;
         }
@@ -961,7 +964,7 @@ private:
     }
   }
 
-  std::set<Production> FIRST(std::vector<Production> productions) {
+  std::set<Production> FIRST(const std::vector<Production> &productions) {
     std::set<Production> result;
     for (const Production &p : productions) {
       if (p.is_terminal) {
@@ -971,15 +974,15 @@ private:
       if (p.is_epsilon) {
         continue;
       }
-      bool has_epsilon = false;
+      bool nullable = false;
       for (const Production &op : first_table[std::vector<Production>{p}]) {
         if (op.is_epsilon) {
-          has_epsilon = true;
+          nullable = true;
           continue;
         }
         result.insert(op);
       }
-      if (!has_epsilon) {
+      if (!nullable) {
         return result;
       }
     }

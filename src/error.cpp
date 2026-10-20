@@ -15,7 +15,7 @@ void parser_throw(ParserErrorKind error_kind, size_t position,
   case ParserErrorKind::UNEXPECTED:
     for (size_t i = 0; i < expected_size; ++i) {
       if (i != 0) {
-        exp += " ";
+        exp += ", ";
       }
       exp += kind_name(expected[i]);
     }

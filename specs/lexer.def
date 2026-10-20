@@ -18,7 +18,6 @@ ABORT: abort
 FAILS: fails
 CATCH: catch
 IMPORT: import
-BLOCK: block
 CONTINUE: continue
 BREAK: break
 DEFER: defer
