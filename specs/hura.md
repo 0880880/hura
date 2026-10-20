@@ -136,7 +136,7 @@ struct Vector2<T> {
         x += rhs.x;
         y += rhs.y;
     }
-} // lets brainstorm generics
+}
 
 struct List<T> { // let language catch the problems at call site? like it would normally
     private ptr: T*? = null;
