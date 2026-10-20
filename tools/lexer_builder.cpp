@@ -298,20 +298,20 @@ public:
         }
         current_dfa.transitions[c] = dfa_ids.at(U);
 
-        bool needs_boundary = false;
-        for (const auto &s : U) {
+        current_dfa.is_word_boundary = false;
+
+        for (const auto &s : T) {
           if (s->is_word_boundary) {
-            needs_boundary = true;
+            current_dfa.is_word_boundary = true;
             break;
           }
         }
-        current_dfa.is_word_boundary = needs_boundary;
       }
     }
 
     int start_state_id = 0;
 
-    bool optimize = false;
+    bool optimize = true;
     if (optimize) { // Hopcroft
       std::map<StateDetails, std::set<int>> partition_labels = {};
       std::set<std::set<int>> partitions = {};
@@ -322,21 +322,27 @@ public:
         det.token_name = s.token_name;
         partition_labels[det].insert(id);
       }
-      std::set<int> smallest_non_empty = {};
-      size_t smallest_size = 10000000000;
+      std::set<std::set<int>> except_largest = {};
+      size_t largest_size = 0;
       for (auto const &[_, p] : partition_labels) {
         if (!p.empty()) {
           partitions.insert(p);
-          if (p.size() < smallest_size) {
-            smallest_size = p.size();
-            smallest_non_empty = p;
+          if (p.size() > largest_size) {
+            largest_size = p.size();
+          }
+        }
+      }
+      for (auto const &[_, p] : partition_labels) {
+        if (!p.empty()) {
+          if (p.size() != largest_size) {
+            except_largest.insert(p);
           }
         }
       }
 
       std::vector<std::set<int>> worklist = {};
-      if (!smallest_non_empty.empty()) {
-        worklist.push_back(smallest_non_empty);
+      for (const std::set<int> &s : except_largest) {
+        worklist.push_back(s);
       }
 
       std::set<int> X;
