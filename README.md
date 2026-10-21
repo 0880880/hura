@@ -1,6 +1,5 @@
 # ToDo
 
-- Fix Hopcrof optimization in Lexer Builder
 - Common Compiler Context Class (C4)
   - File loading
   - Thread local file handling and next file choosing
