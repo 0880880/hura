@@ -84,8 +84,10 @@ proj_dep = declare_dependency(
 )
 
 app_sources = files(
+  'src/compiler.cpp',
   'src/error.cpp',
   'src/main.cpp',
+  'src/type.cpp',
 )
 
 app_deps = [proj_dep, llvm_inc_link, dependency('mio')]
