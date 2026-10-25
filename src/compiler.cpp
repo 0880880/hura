@@ -5,6 +5,7 @@
 #include "parser.h"
 
 #include <assert.h>
+#include <cstddef>
 #include <iostream>
 #include <latch>
 #include <string_view>
@@ -42,20 +43,19 @@ inline void lex(std::vector<uint8_t> &tokens_kind,
                 std::vector<const char *> &tokens_ptr,
                 std::vector<size_t> &tokens_len) {
 
-  Module &module = Compiler::get_module();
+  Module &mod = Compiler::get_module();
 
   size_t pos = 0;
   while (true) {
     size_t token_start = 0, token_end = 0;
 
-    uint8_t kind =
-        next_token(module.view.data() + pos, module.view.size() - pos,
-                   &token_start, &token_end);
+    uint8_t kind = next_token(mod.view.data() + pos, mod.view.size() - pos,
+                              &token_start, &token_end);
 
     const size_t abs_start = pos + token_start;
 
     if (kind == TOKEN_KIND_NULL) {
-      std::cerr << "error: unexpected character '" << module.view[abs_start]
+      std::cerr << "error: unexpected character '" << mod.view[abs_start]
                 << "' at offset " << abs_start << "\n";
       pos = abs_start + 1;
       continue;
@@ -64,12 +64,12 @@ inline void lex(std::vector<uint8_t> &tokens_kind,
     const size_t abs_end = pos + token_end;
 
     tokens_kind.push_back(kind);
-    tokens_ptr.push_back(module.view.data() + abs_start);
+    tokens_ptr.push_back(mod.view.data() + abs_start);
     tokens_len.push_back(abs_end - abs_start);
 
     std::cout << "token kind " << token_name(kind) << " [" << abs_start << ", "
               << abs_end << "): '"
-              << module.view.substr(abs_start, abs_end - abs_start) << "'\n";
+              << mod.view.substr(abs_start, abs_end - abs_start) << "'\n";
 
     pos = abs_end;
 
@@ -106,6 +106,14 @@ void dump(const Nodes &n, std::vector<uint8_t> &tokens_kind,
   }
 }
 
+constexpr inline std::string_view substr(std::vector<uint8_t> &tokens_kind,
+                                         std::vector<const char *> &tokens_ptr,
+                                         std::vector<size_t> &tokens_len,
+                                         Node &node) {
+  ptrdiff_t diff = node.start - tokens_kind.data();
+  return std::string_view{tokens_ptr[diff], tokens_len[diff]};
+}
+
 void process(std::latch &sync) {
   std::vector<uint8_t> tokens_kind;
   std::vector<const char *> tokens_ptr;
@@ -118,7 +126,7 @@ void process(std::latch &sync) {
 
   dump(nodes, tokens_kind, tokens_ptr, tokens_len, nodes.len - 1);
 
-  Module &module = Compiler::get_module();
+  Module &mod = Compiler::get_module();
 
   for (size_t i = nodes.len - 1; i > 0;) {
     if (nodes.nodes[i].kind == NONTERMINAL_ID_PROGRAM ||
@@ -126,9 +134,11 @@ void process(std::latch &sync) {
       i--;
       continue;
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_IMPORT_S) {
-      std::vector<std::string_view> packages = {};
-      // TODO
-      module.imports.emplace_back(packages);
+      Node &lib_node = nodes.nodes[i - 4];
+      Node &mod_node = nodes.nodes[i - 2];
+      mod.imports.emplace_back(
+          substr(tokens_kind, tokens_ptr, tokens_len, lib_node),
+          substr(tokens_kind, tokens_ptr, tokens_len, mod_node));
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_STRUCT_S) {
       // find details
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_FUNCTION) {

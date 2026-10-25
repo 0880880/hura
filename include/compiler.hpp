@@ -9,7 +9,8 @@
 #include <mio/mmap.hpp>
 
 struct Import {
-  std::vector<std::string_view> packages;
+  std::string_view lib;
+  std::string_view mod;
 };
 
 class Module {
