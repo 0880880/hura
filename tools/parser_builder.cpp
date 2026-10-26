@@ -257,7 +257,7 @@ private:
   llvm::IntegerType *i1_type;
   llvm::IntegerType *i8_type;
   llvm::IntegerType *i32_type;
-  llvm::IntegerType *i64_type;
+  llvm::IntegerType *size_type;
   llvm::PointerType *ptr_type;
   llvm::Type *void_type;
   llvm::StructType *node_type;
@@ -280,15 +280,15 @@ private:
         builder.CreateStructGEP(storage_type, storage, 2, "get_cap");
 
     llvm::FunctionCallee malloc_fn =
-        mod->getOrInsertFunction("malloc", ptr_type, i64_type);
+        mod->getOrInsertFunction("malloc", ptr_type, size_type);
     const llvm::DataLayout &DL = mod->getDataLayout();
 
     llvm::Value *heap = builder.CreateCall(
         malloc_fn, llvm::ConstantInt::get(
-                       i64_type, DL.getTypeAllocSize(inner_type) * reserved));
+                       size_type, DL.getTypeAllocSize(inner_type) * reserved));
     builder.CreateStore(heap, sp_ptr);
-    builder.CreateStore(llvm::ConstantInt::get(i64_type, reserved), cap_ptr);
-    builder.CreateStore(llvm::ConstantInt::get(i64_type, 0), len_ptr);
+    builder.CreateStore(llvm::ConstantInt::get(size_type, reserved), cap_ptr);
+    builder.CreateStore(llvm::ConstantInt::get(size_type, 0), len_ptr);
   }
 
   void push_storage(llvm::IRBuilder<> &builder, llvm::Type *inner_type,
@@ -296,10 +296,10 @@ private:
 
     llvm::Value *len_ptr =
         builder.CreateStructGEP(storage_type, storage, 1, "get_len");
-    llvm::Value *len = builder.CreateLoad(i64_type, len_ptr);
+    llvm::Value *len = builder.CreateLoad(size_type, len_ptr);
     llvm::Value *cap_ptr =
         builder.CreateStructGEP(storage_type, storage, 2, "get_cap");
-    llvm::Value *cap = builder.CreateLoad(i64_type, cap_ptr);
+    llvm::Value *cap = builder.CreateLoad(size_type, cap_ptr);
     llvm::Value *should_realloc = builder.CreateICmpUGE(len, cap);
 
     llvm::BasicBlock *realloc_br =
@@ -312,18 +312,18 @@ private:
     builder.SetInsertPoint(realloc_br);
     {
       llvm::FunctionCallee realloc_fn =
-          mod->getOrInsertFunction("realloc", ptr_type, ptr_type, i64_type);
+          mod->getOrInsertFunction("realloc", ptr_type, ptr_type, size_type);
       const llvm::DataLayout &DL = mod->getDataLayout();
 
       llvm::Value *sp_ptr =
           builder.CreateStructGEP(storage_type, storage, 0, "get_ptr");
       llvm::Value *sp = builder.CreateLoad(ptr_type, sp_ptr);
       llvm::Value *new_cap =
-          builder.CreateShl(cap, llvm::ConstantInt::get(i64_type, 1));
+          builder.CreateShl(cap, llvm::ConstantInt::get(size_type, 1));
       builder.CreateStore(new_cap, cap_ptr);
       llvm::Value *new_size = builder.CreateMul(
           new_cap,
-          llvm::ConstantInt::get(i64_type, DL.getTypeAllocSize(inner_type)));
+          llvm::ConstantInt::get(size_type, DL.getTypeAllocSize(inner_type)));
       llvm::Value *new_ptr =
           builder.CreateCall(realloc_fn, {sp, new_size}, "realloc_storage");
       builder.CreateStore(new_ptr, sp_ptr);
@@ -341,16 +341,16 @@ private:
     builder.CreateStore(val, back_ptr);
 
     llvm::Value *new_len =
-        builder.CreateAdd(len, llvm::ConstantInt::get(i64_type, 1));
+        builder.CreateAdd(len, llvm::ConstantInt::get(size_type, 1));
     builder.CreateStore(new_len, len_ptr);
   }
 
   void pop_storage(llvm::IRBuilder<> &builder, llvm::Value *storage, int N) {
     llvm::Value *len_ptr =
         builder.CreateStructGEP(storage_type, storage, 1, "get_len");
-    llvm::Value *len = builder.CreateLoad(i64_type, len_ptr);
+    llvm::Value *len = builder.CreateLoad(size_type, len_ptr);
     llvm::Value *new_len =
-        builder.CreateSub(len, llvm::ConstantInt::get(i64_type, N));
+        builder.CreateSub(len, llvm::ConstantInt::get(size_type, N));
     builder.CreateStore(new_len, len_ptr);
   }
 
@@ -361,10 +361,10 @@ private:
     llvm::Value *sp = builder.CreateLoad(ptr_type, sp_ptr);
     llvm::Value *len_ptr =
         builder.CreateStructGEP(storage_type, storage, 1, "get_len");
-    llvm::Value *len = builder.CreateLoad(i64_type, len_ptr);
+    llvm::Value *len = builder.CreateLoad(size_type, len_ptr);
 
     llvm::Value *end =
-        builder.CreateSub(len, llvm::ConstantInt::get(i64_type, 1));
+        builder.CreateSub(len, llvm::ConstantInt::get(size_type, 1));
     return builder.CreateInBoundsGEP(inner_type, sp, end);
   }
 
@@ -417,8 +417,8 @@ private:
     header_file << std::endl
                 << "struct Node {" << std::endl
                 << "  uint8_t kind;" << std::endl
-                << "  uint8_t *start;" << std::endl
-                << "  uint8_t *end;" << std::endl
+                << "  size_t start_token;" << std::endl
+                << "  size_t end_token;" << std::endl
                 << "  uint8_t children_count;" << std::endl
                 << "  uint32_t subtree_size;" << std::endl
                 << "};" << std::endl;
@@ -446,33 +446,33 @@ private:
     i1_type = llvm::Type::getInt1Ty(*context);
     i8_type = llvm::Type::getInt8Ty(*context);
     i32_type = llvm::Type::getInt32Ty(*context);
-    i64_type = llvm::Type::getInt64Ty(*context);
+    size_type = builder.getIntPtrTy(mod->getDataLayout());
     ptr_type = llvm::PointerType::get(*context, 0);
     void_type = llvm::Type::getVoidTy(*context);
 
     // Node {
     // ui8 kind;
-    // ptr start;
-    // ptr end;
+    // size start;
+    // size end;
     // ui8 children_count;
     // ui32 subtree_size;
     // }
-    std::vector<llvm::Type *> node_body = {i8_type, ptr_type, ptr_type, i8_type,
-                                           i32_type};
+    std::vector<llvm::Type *> node_body = {i8_type, size_type, size_type,
+                                           i8_type, i32_type};
     node_type = llvm::StructType::create(*context, "Node");
     node_type->setBody(node_body);
 
     // Storage {
     // ptr storage;
-    // ui64 len;
-    // ui64 cap;
+    // size len;
+    // size cap;
     // }
-    std::vector<llvm::Type *> storage_body = {ptr_type, i64_type, i64_type};
+    std::vector<llvm::Type *> storage_body = {ptr_type, size_type, size_type};
     storage_type = llvm::StructType::create(*context, "Stack");
     storage_type->setBody(storage_body);
 
     std::vector<llvm::Type *> param_types = {ptr_type, ptr_type,
-                                             i64_type}; // input tokens (i8*)
+                                             size_type}; // input tokens (i8*)
     llvm::FunctionType *func_type =
         llvm::FunctionType::get(void_type, param_types, false);
 
@@ -495,8 +495,8 @@ private:
 
     stack_alloca = builder.CreateAlloca(storage_type);
 
-    i_alloca = builder.CreateAlloca(i64_type);
-    builder.CreateStore(llvm::ConstantInt::get(i64_type, 0), i_alloca);
+    i_alloca = builder.CreateAlloca(size_type);
+    builder.CreateStore(llvm::ConstantInt::get(size_type, 0), i_alloca);
 
     reserve_storage(builder, i32_type, stack_alloca, 100);
     reserve_storage(builder, node_type, fn_param_out, 1000);
@@ -585,10 +585,10 @@ private:
 
       //       llvm::FunctionCallee throw_fn =
       //           mod->getOrInsertFunction("parser_throw", void_type, i8_type,
-      //           i64_type,
-      //                                    i8_type, ptr_type, i64_type);
+      //           size_type,
+      //                                    i8_type, ptr_type, size_type);
       //
-      //       llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
+      //       llvm::Value *i = builder.CreateLoad(size_type, i_alloca);
       //
       //       llvm::Value *kind_ptr = builder.CreateInBoundsGEP(i8_type,
       //       fn_param_tokens, i); llvm::Value *kind =
@@ -599,7 +599,7 @@ private:
       //                          i8_type,
       //                          static_cast<uint8_t>(ParserErrorKind::OTHER)),
       //                      i, kind, llvm::ConstantPointerNull::get(ptr_type),
-      //                      llvm::ConstantInt::get(i64_type, 0)});
+      //                      llvm::ConstantInt::get(size_type, 0)});
       //
       //       free_storage(builder, stack_alloca);
       //       free_storage(builder, nodes_alloca);
@@ -622,17 +622,17 @@ private:
       }
     }
 
-    llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
+    llvm::Value *i = builder.CreateLoad(size_type, i_alloca);
 
     llvm::Value *kind_ptr =
         builder.CreateInBoundsGEP(i8_type, fn_param_tokens, i);
 
     {
       llvm::Value *len = builder.CreateLoad(
-          i64_type, builder.CreateStructGEP(storage_type, fn_param_out, 1),
+          size_type, builder.CreateStructGEP(storage_type, fn_param_out, 1),
           "nodes.len");
       llvm::Value *idx =
-          builder.CreateSub(len, llvm::ConstantInt::get(i64_type, 1));
+          builder.CreateSub(len, llvm::ConstantInt::get(size_type, 1));
       llvm::Value *sp = builder.CreateLoad(
           ptr_type, builder.CreateStructGEP(storage_type, fn_param_out, 0));
       for (size_t i = 0; i < rules[rule_idx].pop_count; ++i) {
@@ -642,7 +642,7 @@ private:
             i32_type,
             builder.CreateStructGEP(node_type, child, 4, "peek.subtree.ptr"));
         idx = builder.CreateSub(
-            idx, builder.CreateZExt(subtree_size, i64_type, "extend_subtree"));
+            idx, builder.CreateZExt(subtree_size, size_type, "extend_subtree"));
       }
       llvm::Value *parent = llvm::UndefValue::get(node_type);
       parent = builder.CreateInsertValue(
@@ -654,25 +654,28 @@ private:
           parent,
           rules[rule_idx].pop_count > 0
               ? (builder.CreateLoad(
-                    ptr_type,
+                    size_type,
                     builder.CreateStructGEP(
                         node_type,
                         builder.CreateInBoundsGEP(
                             node_type,
-                            builder.CreateLoad(
-                                ptr_type,
-                                builder.CreateStructGEP(storage_type,
-                                                        fn_param_out, 0, "")),
+                            builder.CreateLoad(ptr_type,
+                                               builder.CreateStructGEP(
+                                                   storage_type, fn_param_out,
+                                                   0, "get_out_ptr")),
                             builder.CreateAdd(
-                                idx, llvm::ConstantInt::get(i64_type, 1))),
-                        1, "nodes[idx].start")))
-              : (kind_ptr),
+                                idx, llvm::ConstantInt::get(size_type, 1))),
+                        1, "nodes[idx].start_token")))
+              : (builder.CreateSub(
+                    builder.CreateIntToPtr(kind_ptr, size_type),
+                    builder.CreateIntToPtr(fn_param_tokens, size_type),
+                    "kind_ptrdiff")),
           1);
       parent = builder.CreateInsertValue(
           parent,
           rules[rule_idx].pop_count > 0
               ? (builder.CreateLoad(
-                    ptr_type,
+                    size_type,
                     builder.CreateStructGEP(
                         node_type,
                         builder.CreateInBoundsGEP(
@@ -681,9 +684,12 @@ private:
                                 ptr_type, builder.CreateStructGEP(
                                               storage_type, fn_param_out, 0)),
                             builder.CreateSub(
-                                len, llvm::ConstantInt::get(i64_type, 1))),
-                        2, "nodes[len-1].end")))
-              : (kind_ptr),
+                                len, llvm::ConstantInt::get(size_type, 1))),
+                        2, "nodes[len-1].end_token")))
+              : (builder.CreateSub(
+                    builder.CreateIntToPtr(kind_ptr, size_type),
+                    builder.CreateIntToPtr(fn_param_tokens, size_type),
+                    "kind_ptrdiff")),
           2);
       parent = builder.CreateInsertValue(
           parent, llvm::ConstantInt::get(i8_type, rules[rule_idx].pop_count),
@@ -730,7 +736,7 @@ private:
 
     builder.SetInsertPoint(states_data[idx].start_bb);
 
-    llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
+    llvm::Value *i = builder.CreateLoad(size_type, i_alloca);
 
     llvm::Value *kind_ptr =
         builder.CreateInBoundsGEP(i8_type, fn_param_tokens, i);
@@ -783,10 +789,10 @@ private:
           "expected_" + std::to_string(idx));
 
       llvm::FunctionCallee throw_fn =
-          mod->getOrInsertFunction("parser_throw", void_type, i8_type, i64_type,
-                                   i8_type, ptr_type, i64_type);
+          mod->getOrInsertFunction("parser_throw", void_type, i8_type,
+                                   size_type, i8_type, ptr_type, size_type);
 
-      llvm::Value *i = builder.CreateLoad(i64_type, i_alloca);
+      llvm::Value *i = builder.CreateLoad(size_type, i_alloca);
 
       llvm::Value *kind_ptr =
           builder.CreateInBoundsGEP(i8_type, fn_param_tokens, i);
@@ -797,7 +803,7 @@ private:
           {llvm::ConstantInt::get(
                i8_type, static_cast<uint8_t>(ParserErrorKind::UNEXPECTED)),
            i, kind, set_global,
-           llvm::ConstantInt::get(i64_type, state.transitions.size())});
+           llvm::ConstantInt::get(size_type, state.transitions.size())});
 
       free_storage(builder, stack_alloca);
       free_storage(builder, fn_param_out);
@@ -824,17 +830,21 @@ private:
       push_storage(builder, i32_type, stack_alloca,
                    llvm::ConstantInt::get(i32_type, v, false));
       llvm::Value *increment =
-          builder.CreateAdd(i, llvm::ConstantInt::get(i64_type, 1));
+          builder.CreateAdd(i, llvm::ConstantInt::get(size_type, 1));
       builder.CreateStore(increment, i_alloca);
 
       llvm::Value *node = llvm::UndefValue::get(node_type);
       node = builder.CreateInsertValue(
           node, llvm::ConstantInt::get(i8_type, k.token_kind), 0,
           "node.insert.kind");
-      node = builder.CreateInsertValue(node, kind_ptr, 1, "node.insert.start");
       node = builder.CreateInsertValue(
-          node, builder.CreateInBoundsGEP(i8_type, fn_param_tokens, increment),
-          2, "node.insert.end");
+          node,
+          (builder.CreateSub(builder.CreateIntToPtr(kind_ptr, size_type),
+                             builder.CreateIntToPtr(fn_param_tokens, size_type),
+                             "kind_ptrdiff")),
+          1, "node.insert.start_token");
+      node = builder.CreateInsertValue(node, increment, 2,
+                                       "node.insert.end_token");
       node = builder.CreateInsertValue(node, llvm::ConstantInt::get(i8_type, 0),
                                        3, "node.insert.children_count");
       node =
