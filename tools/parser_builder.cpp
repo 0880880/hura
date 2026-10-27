@@ -667,8 +667,8 @@ private:
                                 idx, llvm::ConstantInt::get(size_type, 1))),
                         1, "nodes[idx].start_token")))
               : (builder.CreateSub(
-                    builder.CreateIntToPtr(kind_ptr, size_type),
-                    builder.CreateIntToPtr(fn_param_tokens, size_type),
+                    builder.CreatePtrToInt(kind_ptr, size_type),
+                    builder.CreatePtrToInt(fn_param_tokens, size_type),
                     "kind_ptrdiff")),
           1);
       parent = builder.CreateInsertValue(
@@ -687,8 +687,8 @@ private:
                                 len, llvm::ConstantInt::get(size_type, 1))),
                         2, "nodes[len-1].end_token")))
               : (builder.CreateSub(
-                    builder.CreateIntToPtr(kind_ptr, size_type),
-                    builder.CreateIntToPtr(fn_param_tokens, size_type),
+                    builder.CreatePtrToInt(kind_ptr, size_type),
+                    builder.CreatePtrToInt(fn_param_tokens, size_type),
                     "kind_ptrdiff")),
           2);
       parent = builder.CreateInsertValue(
@@ -839,8 +839,8 @@ private:
           "node.insert.kind");
       node = builder.CreateInsertValue(
           node,
-          (builder.CreateSub(builder.CreateIntToPtr(kind_ptr, size_type),
-                             builder.CreateIntToPtr(fn_param_tokens, size_type),
+          (builder.CreateSub(builder.CreatePtrToInt(kind_ptr, size_type),
+                             builder.CreatePtrToInt(fn_param_tokens, size_type),
                              "kind_ptrdiff")),
           1, "node.insert.start_token");
       node = builder.CreateInsertValue(node, increment, 2,
