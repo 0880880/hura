@@ -1,9 +1,6 @@
 #include <filesystem>
 
-#include "base.h"
 #include "compiler.hpp"
-#include "lexer.h"
-#include "parser.h"
 
 int main() {
   std::filesystem::path dir = ".";
