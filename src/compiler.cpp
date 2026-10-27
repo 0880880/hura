@@ -87,9 +87,8 @@ void dump(const Nodes &n, std::vector<uint8_t> &tokens_kind,
   std::cout << kind_name(node.kind);
   if (node.kind < 128) {
     std::cout << ": \"";
-    ptrdiff_t diff = node.start - tokens_kind.data();
-    std::cout << std::string_view{*(tokens_ptr.data() + diff),
-                                  *(tokens_len.data() + diff)};
+    std::cout << std::string_view{tokens_ptr[node.start_token],
+                                  tokens_len[node.start_token]};
     std::cout << "\"";
   }
   std::cout << "\n";
@@ -106,12 +105,11 @@ void dump(const Nodes &n, std::vector<uint8_t> &tokens_kind,
   }
 }
 
-constexpr inline std::string_view substr(std::vector<uint8_t> &tokens_kind,
-                                         std::vector<const char *> &tokens_ptr,
+constexpr inline std::string_view substr(std::vector<const char *> &tokens_ptr,
                                          std::vector<size_t> &tokens_len,
                                          Node &node) {
-  ptrdiff_t diff = node.start - tokens_kind.data();
-  return std::string_view{tokens_ptr[diff], tokens_len[diff]};
+  return std::string_view{tokens_ptr[node.start_token],
+                          tokens_len[node.start_token]};
 }
 
 void process(std::latch &sync) {
@@ -136,9 +134,8 @@ void process(std::latch &sync) {
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_IMPORT_S) {
       Node &lib_node = nodes.nodes[i - 4];
       Node &mod_node = nodes.nodes[i - 2];
-      mod.imports.emplace_back(
-          substr(tokens_kind, tokens_ptr, tokens_len, lib_node),
-          substr(tokens_kind, tokens_ptr, tokens_len, mod_node));
+      mod.imports.emplace_back(substr(tokens_ptr, tokens_len, lib_node),
+                               substr(tokens_ptr, tokens_len, mod_node));
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_STRUCT_S) {
       // find details
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_FUNCTION) {
