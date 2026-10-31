@@ -105,26 +105,22 @@ void dump(const Nodes &n, std::vector<uint8_t> &tokens_kind,
   }
 }
 
-constexpr inline std::string_view substr(std::vector<const char *> &tokens_ptr,
-                                         std::vector<size_t> &tokens_len,
-                                         Node &node) {
-  return std::string_view{tokens_ptr[node.start_token],
-                          tokens_len[node.start_token]};
+constexpr inline std::string_view substr(Module &mod, Node &node) {
+  return std::string_view{mod.tokens_ptr[node.start_token],
+                          mod.tokens_len[node.start_token]};
 }
 
 void process(std::latch &sync) {
-  std::vector<uint8_t> tokens_kind;
-  std::vector<const char *> tokens_ptr;
-  std::vector<size_t> tokens_len;
-  lex(tokens_kind, tokens_ptr, tokens_len);
+
+  Module &mod = Compiler::get_module();
+
+  lex(mod.tokens_kind, mod.tokens_ptr, mod.tokens_len);
 
   Nodes nodes;
 
-  parse(&nodes, tokens_kind.data(), tokens_kind.size());
+  parse(&nodes, mod.tokens_kind.data(), mod.tokens_kind.size());
 
-  dump(nodes, tokens_kind, tokens_ptr, tokens_len, nodes.len - 1);
-
-  Module &mod = Compiler::get_module();
+  dump(nodes, mod.tokens_kind, mod.tokens_ptr, mod.tokens_len, nodes.len - 1);
 
   for (size_t i = nodes.len - 1; i > 0;) {
     if (nodes.nodes[i].kind == NONTERMINAL_ID_PROGRAM ||
@@ -134,8 +130,9 @@ void process(std::latch &sync) {
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_IMPORT_S) {
       Node &lib_node = nodes.nodes[i - 4];
       Node &mod_node = nodes.nodes[i - 2];
-      mod.imports.emplace_back(substr(tokens_ptr, tokens_len, lib_node),
-                               substr(tokens_ptr, tokens_len, mod_node));
+      mod.imports.emplace_back(
+          substr(mod, lib_node),
+          substr(mod, mod_node));
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_STRUCT_S) {
       // find details
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_FUNCTION) {

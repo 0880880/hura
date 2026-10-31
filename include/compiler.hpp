@@ -24,6 +24,10 @@ public:
   std::vector<Export> exports = {};
   std::vector<Import> imports = {};
 
+  std::vector<uint8_t> tokens_kind;
+  std::vector<const char *> tokens_ptr;
+  std::vector<size_t> tokens_len;
+
   Module(std::filesystem::path &path) : path(path) {
     std::error_code ec;
     if (std::filesystem::file_size(path, ec) == 0 && !ec) {
