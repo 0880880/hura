@@ -23,7 +23,11 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/TargetParser/Host.h>
+#include <llvm/TargetParser/TargetParser.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar/GVN.h>
 #include <llvm/Transforms/Scalar/JumpThreading.h>
@@ -440,6 +444,15 @@ private:
     context = std::make_unique<llvm::LLVMContext>();
 
     mod = std::make_unique<llvm::Module>("parser", *context);
+
+    std::string err;
+    std::string triple_str = llvm::sys::getDefaultTargetTriple();
+    llvm::Triple triple(triple_str);
+    auto *target = llvm::TargetRegistry::lookupTarget(triple, err);
+    llvm::TargetMachine *tm =
+        target->createTargetMachine(triple, "generic", "", {}, std::nullopt);
+    mod->setDataLayout(tm->createDataLayout());
+    mod->setTargetTriple(triple);
 
     llvm::IRBuilder<> builder(*context);
 
