@@ -12,6 +12,6 @@
 - Create CLI Utility
 - Testing!
 - Error handling
-- Multithreaded backend
 - Code generation Write TODO
-- Vulkan backend?
+- Remove end from Node and only use subtree_size
+- Use size_t in Lexer
