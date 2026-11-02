@@ -5,6 +5,7 @@
 #include <iostream>
 #include <map>
 #include <numeric>
+#include <optional>
 #include <ranges>
 #include <set>
 #include <string>
@@ -76,8 +77,10 @@ struct Production {
 };
 
 struct GrammarDefinition {
+  std::string name;
   std::string from;
   std::vector<Production> g;
+  std::vector<std::optional<std::string>> names;
 
   constexpr size_t real_size() const {
     return (g.size() == 1 && g[0].is_epsilon) ? 0 : g.size();
@@ -239,7 +242,7 @@ struct Rule {
 
 class ParserBuilder {
 private:
-  std::vector<GrammarDefinition> grammarDefinitions;
+  std::vector<GrammarDefinition> grammar_definitions;
   std::vector<Rule> rules;
   std::string start;
   std::deque<DFAState> states;
@@ -390,54 +393,179 @@ private:
 
     std::ofstream header_file(filename);
 
-    header_file << "#pragma once" << std::endl << std::endl;
-    header_file << "#include <stdint.h>" << std::endl;
-    header_file << "#include \"lexer.h\"" << std::endl;
-
     if (!header_file.is_open()) {
       std::cerr << "Error: Could not open file " << filename << std::endl;
       return;
     }
 
+    header_file << "#pragma once\n\n";
+    header_file << "#include <stdint.h>\n";
+    header_file << "#include \"lexer.h\"\n";
+
     for (auto const &[name, id] : nonterminal_id_map) {
       header_file << "#define NONTERMINAL_ID_" << name << " "
-                  << (static_cast<int>(id) + 128) << std::endl;
+                  << (static_cast<int>(id) + 128) << "\n";
     }
+
+    header_file << "#ifdef __cplusplus\n#include <type_traits>\nextern \"C\" "
+                   "{\n#endif\n";
 
     header_file << "static const char *kind_name(uint8_t kind) {\n";
     header_file << "switch(kind) {\n";
     for (auto const &[name, id] : nonterminal_id_map) {
       header_file << "case " << (static_cast<int>(id) + 128) << ": return "
-                  << "\"" << name << "\";" << std::endl;
+                  << "\"" << name << "\";\n";
     }
     for (auto const &[id, token_name] : id_token_map) {
       header_file << "case " << static_cast<int>(id) << ": return "
-                  << "\"" << token_name << "\";" << std::endl;
+                  << "\"" << token_name << "\";\n";
     }
-    header_file << "default: return \"?\";" << std::endl;
+    header_file << "default: return \"?\";\n";
     header_file << "}\n";
     header_file << "}\n\n";
 
-    header_file << std::endl
-                << "struct Node {" << std::endl
-                << "  uint8_t kind;" << std::endl
-                << "  size_t start_token;" << std::endl
-                << "  size_t end_token;" << std::endl
-                << "  uint8_t children_count;" << std::endl
-                << "  uint32_t subtree_size;" << std::endl
-                << "};" << std::endl;
+    header_file
+        << "\n"
+           "struct Node {\n"
+           "  uint8_t kind;\n"
+           "  size_t start_token;\n"
+           "  size_t end_token;\n"
+           "  uint8_t children_count;\n"
+           "  uint32_t subtree_size;\n"
+           "#ifdef __cplusplus\n"
+           "  bool is_empty() const {return children_count == 0;}\n"
+           "  const Node &operator [](size_t idx) const {\n"
+           "    const Node *i = this-1;\n"
+           "    for (size_t j = 0; j < idx; ++j) {i -= i->subtree_size;}\n"
+           "    return *i;\n"
+           "  }\n"
+           "#endif\n"
+           "};\n"
+           "#ifdef "
+           "__cplusplus\nstatic_assert(std::is_standard_layout_v<Node>);\n#"
+           "endif\n";
 
-    header_file << std::endl
-                << "struct Nodes {" << std::endl
-                << "  Node *nodes;" << std::endl
-                << "  size_t len;" << std::endl
-                << "  size_t cap;" << std::endl
-                << "};" << std::endl;
+    header_file << "\n"
+                   "typedef struct Nodes {\n"
+                   "  Node *nodes;\n"
+                   "  size_t len;\n"
+                   "  size_t cap;\n"
+                   "} Nodes;\n";
 
-    header_file << "extern \"C\" void parse(Nodes *out_nodes, "
-                   "uint8_t* tokens, "
-                   "size_t len);"
-                << std::endl;
+    header_file
+        << "void parse(Nodes *out_nodes, uint8_t* tokens, size_t len);\n";
+
+    header_file << "#ifdef __cplusplus\n}\n";
+
+    header_file << "\nnamespace Parser {\n";
+
+    header_file
+        << "template <class Derived>\n"
+           "struct View : Node {\n"
+           "    View()                       = delete;\n"
+           "    View(const View&)            = delete;\n"
+           "    View& operator=(const View&) = delete;\n"
+           "    ~View()                      = delete;\n"
+           "    static Derived& from(Node& n) noexcept { check(); "
+           "return static_cast<Derived&>(n); }\n"
+           "    static const Derived& from(const Node& n) noexcept { check(); "
+           "return static_cast<const Derived&>(n); }\n"
+           "    static Derived *from(Node *n) noexcept { check(); "
+           "return static_cast<Derived*>(n); }\n"
+           "    Node&       raw()       noexcept { return *this; }\n"
+           "    const Node& raw() const noexcept { return *this; }\n"
+           "private:\n"
+           "    static constexpr void check() {\n"
+           "        static_assert(sizeof(Derived) == sizeof(Node),   "
+           "\" view must not add data members \");\n"
+           "        static_assert(alignof(Derived) == alignof(Node), "
+           "\" view must not change alignment \");\n"
+           "        static_assert(std::is_standard_layout_v<Derived>, "
+           "\" view must stay standard layout \");\n"
+           "        static_assert(!std::is_polymorphic_v<Derived>,    "
+           "\" view must not be virtual \");\n"
+           "    }\n"
+           "};\n";
+
+    header_file
+        << "template <class D>\n"
+           "D& as(Node& n) noexcept { return D::from(n); }\n"
+           "template <class D>\n"
+           "const D& as(const Node& n) noexcept { return D::from(n); }\n";
+
+    header_file << "\nstruct TokenNode : View<TokenNode> {\n};";
+
+    std::set<std::string> multi_set;
+    for (const GrammarDefinition &def : grammar_definitions) {
+      if (!multi_set.contains(def.from)) {
+        multi_set.insert(def.from);
+      } else {
+        continue;
+      }
+      header_file << "\nstruct " << def.name << "Node;\n";
+    }
+    multi_set.clear();
+    for (const GrammarDefinition &def : grammar_definitions) {
+      if (!multi_set.contains(def.from)) {
+        multi_set.insert(def.from);
+      } else {
+        continue;
+      }
+      header_file << "\nstruct " << def.name << "Node : View<" << def.name
+                  << "Node> {\n";
+      for (size_t i = 0; i < def.names.size(); i++) {
+        if (def.names[i]) {
+          const std::string &name = def.names[i].value();
+          std::string target = "TokenNode";
+          if (!def.g[i].is_terminal && !def.g[i].is_epsilon) {
+            for (const GrammarDefinition &o : grammar_definitions) {
+              if (o.from == def.g[i].value) {
+                target = o.name + "Node";
+                break;
+              }
+            }
+          }
+          header_file << "const " << target << " &" << name << "() const;";
+        }
+      }
+      header_file << "};\n";
+    }
+    multi_set.clear();
+    for (const GrammarDefinition &def : grammar_definitions) {
+      if (!multi_set.contains(def.from)) {
+        multi_set.insert(def.from);
+      } else {
+        continue;
+      }
+      for (size_t i = 0; i < def.names.size(); i++) {
+        if (def.names[i]) {
+          const std::string &name = def.names[i].value();
+          std::string target = "TokenNode";
+          if (!def.g[i].is_terminal && !def.g[i].is_epsilon) {
+            for (const GrammarDefinition &o : grammar_definitions) {
+              if (o.from == def.g[i].value) {
+                target = o.name + "Node";
+                break;
+              }
+            }
+          }
+          header_file << "inline const " << target << " &" << def.name
+                      << "Node::" << name << "() const {\n";
+          header_file << "    const " << def.name << "Node *i = this-1;\n";
+          for (size_t j = 0; j < i; j++) {
+            header_file << "    i -= i->subtree_size;\n";
+          }
+          header_file << "    return *static_cast<const " << target
+                      << " *>(static_cast<const Node *>(i));";
+          header_file << "\n}\n";
+        }
+      }
+    }
+    header_file << "} // namespace Parser\n";
+
+    header_file << "#endif";
+
+    header_file << std::endl;
   }
 
   void emit_ir(std::string filename) {
@@ -449,6 +577,9 @@ private:
     std::string triple_str = llvm::sys::getDefaultTargetTriple();
     llvm::Triple triple(triple_str);
     auto *target = llvm::TargetRegistry::lookupTarget(triple, err);
+    if (!target) {
+      std::cerr << err << std::endl;
+    }
     llvm::TargetMachine *tm =
         target->createTargetMachine(triple, "generic", "", {}, std::nullopt);
     mod->setDataLayout(tm->createDataLayout());
@@ -951,7 +1082,7 @@ private:
   std::vector<GrammarDefinition> find(const std::string name) {
     std::vector<GrammarDefinition> out;
     out.reserve(1);
-    for (GrammarDefinition &def : grammarDefinitions) {
+    for (GrammarDefinition &def : grammar_definitions) {
       if (def.from == name) {
         out.push_back(def);
       }
@@ -1169,8 +1300,8 @@ private:
   }
 
   size_t find_rule(const LRItem &item) {
-    for (size_t i = 0; i < grammarDefinitions.size(); ++i) {
-      const GrammarDefinition &def = grammarDefinitions[i];
+    for (size_t i = 0; i < grammar_definitions.size(); ++i) {
+      const GrammarDefinition &def = grammar_definitions[i];
       if (def.from == item.from && def.g == item.prods) {
         return i;
       }
@@ -1180,7 +1311,7 @@ private:
 
 public:
   void add(const GrammarDefinition def) {
-    grammarDefinitions.push_back(GrammarDefinition(def));
+    grammar_definitions.push_back(GrammarDefinition(def));
     rules.push_back(Rule{def.from, def.real_size()});
     if (!nonterminal_id_map.contains(def.from)) {
       nonterminal_id_map[def.from] = nonterminal_id_map.size();
@@ -1202,7 +1333,7 @@ public:
       bool changed = true;
       while (changed) {
         changed = false;
-        for (const GrammarDefinition &def : grammarDefinitions) {
+        for (const GrammarDefinition &def : grammar_definitions) {
           bool natural_end = true;
           for (const Production &p : def.g) {
             std::set<Production> &pf = first_table[std::vector<Production>{p}];
@@ -1330,42 +1461,43 @@ public:
       }
 
       std::vector<std::string> ors = split_by_string(parts[1], " | ");
+      std::vector<std::string> def_name = split_by_string(parts[0], ":");
       for (const std::string &s : ors) {
         GrammarDefinition def{};
-        def.from = parts[0];
+        def.from = def_name[0];
+        def.name = def_name.size() == 2 ? def_name[1] : def_name[0];
         std::vector<std::string> prods = split_by_string(s, " ");
         for (const std::string &p : prods) {
+          std::vector<std::string> names = split_by_string(p, ":");
           if (s == "ε") {
             def.g.push_back(Production::epsilon());
-          } else if (token_id_map.contains(p)) {
-            def.g.push_back(Production::terminal(token_id_map[p]));
+          } else if (token_id_map.contains(names[0])) {
+            def.g.push_back(Production::terminal(token_id_map[names[0]]));
           } else {
-            def.g.push_back(Production::nonterminal(p));
+            def.g.push_back(Production::nonterminal(names[0]));
+          }
+          if (names.size() == 1) {
+            def.names.push_back(std::nullopt);
+          } else if (s != "ε" && names.size() == 2) {
+            def.names.push_back(names[1]);
+          } else {
+            throw std::runtime_error("Invalid : use");
           }
         }
         add(def);
       }
     }
 
-    set_start(grammarDefinitions[0].from);
+    set_start(grammar_definitions[0].from);
 
-    for (const GrammarDefinition &def : grammarDefinitions) {
+    for (const GrammarDefinition &def : grammar_definitions) {
       for (const Production &p : def.g) {
         if (p.is_terminal || p.is_epsilon) {
           continue;
         }
-        bool found = false;
-        for (const GrammarDefinition &other : grammarDefinitions) {
-          if (other.from != p.value) {
-            continue;
-          }
-          found = true;
-          break;
-        }
-        if (found) {
-          break;
-        } else {
-          std::cerr << "Empty definition for " << p.value << std::endl;
+        if (!nonterminal_id_map.contains(p.value)) {
+          throw std::runtime_error("Undefined nonterminal '" + p.value +
+                                   "' used in rule for " + def.from);
         }
       }
     }

@@ -130,9 +130,7 @@ void process(std::latch &sync) {
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_IMPORT_S) {
       Node &lib_node = nodes.nodes[i - 4];
       Node &mod_node = nodes.nodes[i - 2];
-      mod.imports.emplace_back(
-          substr(mod, lib_node),
-          substr(mod, mod_node));
+      mod.imports.emplace_back(substr(mod, lib_node), substr(mod, mod_node));
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_STRUCT_S) {
       // find details
     } else if (nodes.nodes[i].kind == NONTERMINAL_ID_FUNCTION) {
